@@ -48,6 +48,7 @@ class OllamaBackend:
                 "Ollama returned HTTP %s: %s"
                 % (resp.status_code, resp.text[:200])
             )
+        resp.encoding = "utf-8"
         for line in resp.iter_lines(decode_unicode=True):
             if not line:
                 continue
@@ -100,6 +101,7 @@ class OpenAICompatibleBackend:
                 "The API returned HTTP %s: %s"
                 % (resp.status_code, resp.text[:200])
             )
+        resp.encoding = "utf-8"
         for line in resp.iter_lines(decode_unicode=True):
             if not line or not line.startswith("data:"):
                 continue
