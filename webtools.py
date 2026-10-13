@@ -138,25 +138,33 @@ def web_fetch(url, max_chars=3000):
     return _clean_html(resp.text)[:max_chars].strip()
 
 
-def search_task_context(backend, task, today, max_results=5, fetch_pages=3):
-    """Search the web for a task and return formatted context text.
+def search_with_results(backend, task, today, history=None,
+                      max_results=5, fetch_pages=3):
+    """Rewrite the task into a search query, search, and read the top pages.
 
-    Rewrites the task into a sharp query, searches DuckDuckGo, and reads
-    the top pages. Returns an empty string when the search fails, so
-    callers can proceed without web context.
+    Returns (results, context): results is the list of
+    {title, url, snippet} dicts, context is the formatted text handed to
+    the model. Returns ([], "") when the search fails so callers can
+    proceed without web context.
     """
     search_query = task
     try:
+        hist_text = "\n".join(
+            "%s: %s" % (m.get("role"), (m.get("content") or "")[:300])
+            for m in (history or [])[-6:]
+        )
         rewrite_messages = [
             {"role": "system",
              "content": "You rewrite questions as short web search queries."},
             {"role": "user",
              "content": (
                  "Today is %s. Rewrite the following question as a short web "
-                 "search query (under 12 words). Resolve relative dates like "
-                 "'next week' or 'tonight' into actual dates. "
-                 "Output only the query, nothing else.\n\nQuestion: %s"
-                 % (today, task)
+                 "search query (under 12 words). Use the conversation history "
+                 "to resolve follow-ups, pronouns, and implied subjects. "
+                 "Resolve relative dates like 'next week' or 'tonight' into "
+                 "actual dates. Output only the query, nothing else.\n\n"
+                 "History:\n%s\n\nQuestion: %s"
+                 % (today, hist_text or "(none)", task)
              )},
         ]
         rewritten = "".join(backend.stream(rewrite_messages)).strip().strip('"')
@@ -168,7 +176,7 @@ def search_task_context(backend, task, today, max_results=5, fetch_pages=3):
     try:
         results = web_search(search_query, max_results=max_results)
     except WebError:
-        return ""
+        return [], ""
 
     context_parts = [
         "[%d] %s\n%s\n%s" % (i + 1, r["title"], r["url"], r["snippet"])
@@ -181,21 +189,56 @@ def search_task_context(backend, task, today, max_results=5, fetch_pages=3):
             context_parts.append(
                 "Page content from %s:\n%s" % (r["url"], page_text)
             )
-    return "\n\n".join(context_parts)
+    return results, "\n\n".join(context_parts)
 
 
-def build_web_messages(backend, query, system_prompt, today):
+def search_task_context(backend, task, today, max_results=5, fetch_pages=3):
+    """Search the web for a task and return formatted context text.
+
+    Returns an empty string when the search fails, so callers can proceed
+    without web context.
+    """
+    _results, context = search_with_results(
+        backend, task, today, max_results=max_results, fetch_pages=fetch_pages
+    )
+    return context
+
+
+def linkify_citations(answer, results):
+    """Replace [N] citation markers with markdown links to the Nth result.
+
+    The model sometimes mimics the [1], [2] labels from the search context
+    instead of writing inline links. This makes those markers clickable.
+    Markers with no matching result are removed.
+    """
+    def repl(match):
+        idx = int(match.group(1)) - 1
+        if 0 <= idx < len(results):
+            title = results[idx]["title"].replace("[", "").replace("]", "")
+            return "[%s](%s)" % (title, results[idx]["url"])
+        return ""
+    return re.sub(r"\[(\d+)\]", repl, answer)
+
+
+def build_web_messages(backend, query, system_prompt, today, history=None):
     """Rewrite the query, search the web, read the top pages, and return
     the chat messages that get the model to answer from the results.
 
-    Raises WebError when the search fails.
+    history is recent conversation (list of {role, content}) so follow-up
+    questions resolve against what was already discussed.
+
+    Returns (messages, results). Raises WebError when the search fails.
     """
-    context = search_task_context(backend, query, today)
+    history = history or []
+    results, context = search_with_results(
+        backend, query, today, history=history
+    )
     if not context:
         raise WebError("No search results found.")
 
-    return [
-        {"role": "system", "content": system_prompt},
+    messages = [{"role": "system", "content": system_prompt}]
+    messages += history[-6:]
+    messages.append(
         {"role": "user",
          "content": (
              "Today is %s.\n\n"
@@ -209,4 +252,5 @@ def build_web_messages(backend, query, system_prompt, today):
              "instead of guessing.\n\n"
              "Search results:\n%s\n\nQuestion: %s" % (today, context, query)
          )},
-    ]
+    )
+    return messages, results

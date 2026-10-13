@@ -163,6 +163,94 @@ body {
   color: #fff;
 }
 
+.message {
+  position: relative;
+}
+
+/* Hover toolbar: react, reply, copy. */
+.message-actions {
+  position: absolute;
+  top: -15px;
+  right: 8px;
+  display: none;
+  gap: 2px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 2px 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  z-index: 5;
+}
+
+.message:hover .message-actions,
+.message.show-actions .message-actions,
+.message:focus-within .message-actions {
+  display: flex;
+}
+
+.message.streaming .message-actions {
+  display: none;
+}
+
+.action-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 3px 5px;
+  border-radius: 6px;
+}
+
+.action-btn:hover {
+  background: rgba(128, 128, 128, 0.25);
+}
+
+.emoji-picker {
+  position: absolute;
+  top: 20px;
+  right: 8px;
+  display: flex;
+  gap: 2px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  z-index: 6;
+}
+
+.emoji-picker.hidden {
+  display: none;
+}
+
+.emoji-option {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  padding: 2px 4px;
+  border-radius: 6px;
+  line-height: 1;
+}
+
+.emoji-option:hover {
+  background: rgba(128, 128, 128, 0.25);
+  transform: scale(1.25);
+}
+
+.reaction-badge {
+  position: absolute;
+  bottom: -11px;
+  right: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0 6px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
 .message.assistant.streaming::after {
   content: "▍";
   animation: blink 1s infinite;

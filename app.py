@@ -15,7 +15,8 @@ from flask import Flask, Response, jsonify, render_template, request
 
 from backends import BackendError, build_backend
 from subagents import run_subagents
-from webtools import WebError, build_web_messages, search_task_context, web_fetch, web_search
+from webtools import (WebError, build_web_messages, linkify_citations,
+                      search_task_context, search_with_results)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -137,6 +138,12 @@ def init_db():
             created_at TEXT NOT NULL
         )"""
     )
+    # Migration: per-message emoji reactions.
+    cols = [r["name"] for r in conn.execute("PRAGMA table_info(messages)")]
+    if "reactions" not in cols:
+        conn.execute(
+            "ALTER TABLE messages ADD COLUMN reactions TEXT NOT NULL DEFAULT ''"
+        )
     conn.commit()
     conn.close()
 
@@ -203,7 +210,7 @@ def get_conversation(conversation_id):
         conn.close()
         return jsonify({"error": "Conversation not found."}), 404
     rows = conn.execute(
-        "SELECT role, content, created_at FROM messages "
+        "SELECT id, role, content, created_at, reactions FROM messages "
         "WHERE conversation_id = ? ORDER BY id ASC",
         (conversation_id,),
     ).fetchall()
@@ -262,10 +269,10 @@ def classify_intent(backend, query, history):
     return "chat"
 
 
-def team_response(backend, conversation_id, task, agents):
+def team_response(backend, conversation_id, task, agents, user_message_id):
     """Run the subagent team and stream the merged answer as SSE."""
     today = datetime.now().strftime("%A, %B %d, %Y")
-    web_context = search_task_context(backend, task, today)
+    results, web_context = search_with_results(backend, task, today)
     try:
         result = run_subagents(backend, task, agents, CONFIG["system_prompt"],
                                web_context=web_context)
@@ -277,22 +284,118 @@ def team_response(backend, conversation_id, task, agents):
     text = (result.get("synthesis") or "").strip()
     if not text:
         text = "The team returned no merged answer."
+    text = linkify_citations(text, results)
+
+    conn = get_db()
+    cur = conn.execute(
+        "INSERT INTO messages (conversation_id, role, content, created_at) "
+        "VALUES (?, ?, ?, ?)",
+        (conversation_id, "assistant", text, utcnow()),
+    )
+    assistant_message_id = cur.lastrowid
+    conn.commit()
+    conn.close()
 
     def generate():
         try:
             # Stream in chunks so the frontend's SSE handling works unchanged.
             for i in range(0, len(text), 120):
                 yield "data: %s\n\n" % json.dumps({"delta": text[i:i + 120]})
+            yield stream_done_event(user_message_id, assistant_message_id)
         finally:
-            conn = get_db()
-            conn.execute(
+            yield "data: [DONE]\n\n"
+
+    return Response(generate(), mimetype="text/event-stream")
+
+
+@app.route("/api/messages/<int:message_id>/react", methods=["POST"])
+def react_message(message_id):
+    """Toggle an emoji reaction on a message (single user, one reaction
+    per message; tapping the same emoji again removes it)."""
+    data = request.get_json(force=True, silent=True) or {}
+    emoji = (data.get("emoji") or "").strip()
+    conn = get_db()
+    row = conn.execute(
+        "SELECT reactions FROM messages WHERE id = ?", (message_id,)
+    ).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"error": "Message not found."}), 404
+    current = row["reactions"] or ""
+    new_reaction = "" if current == emoji else emoji
+    conn.execute(
+        "UPDATE messages SET reactions = ? WHERE id = ?",
+        (new_reaction, message_id),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"reaction": new_reaction})
+
+
+def stream_done_event(user_message_id, assistant_message_id):
+    """Final SSE payload carrying the saved message IDs."""
+    return "data: %s\n\n" % json.dumps({
+        "done": True,
+        "user_message_id": user_message_id,
+        "assistant_message_id": assistant_message_id,
+    })
+
+
+def buffered_web_answer(backend, conversation_id, save_user_text, messages,
+                        results, user_message_id, is_first=False):
+    """Run a web-grounded answer to completion, linkify its citations,
+    save the exchange, then stream the final text as SSE chunks.
+
+    Buffering (instead of live token streaming) lets us rewrite stray
+    [N] citation markers into clickable links before anything is shown.
+    """
+    try:
+        raw = "".join(backend.stream(messages)).strip()
+    except BackendError as exc:
+        return jsonify({"error": str(exc)}), 500
+    except Exception:
+        return jsonify(
+            {"error": "Something went wrong while generating a response."}
+        ), 500
+
+    text = linkify_citations(raw, results) if raw else ""
+    assistant_message_id = None
+    if conversation_id and text:
+        conn = get_db()
+        if save_user_text is not None:
+            cur = conn.execute(
                 "INSERT INTO messages (conversation_id, role, content, created_at) "
                 "VALUES (?, ?, ?, ?)",
-                (conversation_id, "assistant", text, utcnow()),
+                (conversation_id, "user", save_user_text, utcnow()),
             )
-            conn.commit()
-            conn.close()
-            yield "data: [DONE]\n\n"
+            user_message_id = cur.lastrowid
+            if is_first:
+                conn.execute(
+                    "UPDATE conversations SET title = ? WHERE id = ?",
+                    (make_title(save_user_text), conversation_id),
+                )
+        cur = conn.execute(
+            "INSERT INTO messages (conversation_id, role, content, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            (conversation_id, "assistant", text, utcnow()),
+        )
+        assistant_message_id = cur.lastrowid
+        conn.commit()
+        conn.close()
+
+    def generate():
+        # Chunk on word boundaries, keeping each word's trailing space so
+        # the frontend can reassemble the exact text.
+        chunk = ""
+        for word in text.split(" "):
+            chunk += word + " "
+            if len(chunk) >= 32:
+                yield "data: %s\n\n" % json.dumps({"delta": chunk})
+                chunk = ""
+        if chunk:
+            yield "data: %s\n\n" % json.dumps({"delta": chunk})
+        yield stream_done_event(user_message_id, assistant_message_id)
+        yield "data: [DONE]\n\n"
 
     return Response(generate(), mimetype="text/event-stream")
 
@@ -319,11 +422,12 @@ def chat():
         (conversation_id,),
     ).fetchall()
     is_first = len(history_rows) == 0
-    conn.execute(
+    cur = conn.execute(
         "INSERT INTO messages (conversation_id, role, content, created_at) "
         "VALUES (?, ?, ?, ?)",
         (conversation_id, "user", message, utcnow()),
     )
+    user_message_id = cur.lastrowid
     if is_first:
         conn.execute(
             "UPDATE conversations SET title = ? WHERE id = ?",
@@ -351,16 +455,24 @@ def chat():
     if intent == "web":
         today = datetime.now().strftime("%A, %B %d, %Y")
         try:
-            messages = build_web_messages(
-                backend, message, CONFIG["system_prompt"], today
+            messages, results = build_web_messages(
+                backend, message, CONFIG["system_prompt"], today,
+                history=history_dicts,
             )
         except WebError:
             # Web failed; fall back to a normal reply instead of erroring.
             pass
+        else:
+            return buffered_web_answer(
+                backend, conversation_id, None, messages, results,
+                user_message_id,
+            )
     elif intent == "team":
         agents = CONFIG.get("subagents") or []
         if agents:
-            return team_response(backend, conversation_id, message, agents)
+            return team_response(
+                backend, conversation_id, message, agents, user_message_id
+            )
         # No team configured; fall through to a normal reply.
 
     def generate():
@@ -377,15 +489,18 @@ def chat():
             )
         else:
             text = "".join(parts)
+            assistant_message_id = None
             if text:
                 conn = get_db()
-                conn.execute(
+                cur = conn.execute(
                     "INSERT INTO messages (conversation_id, role, content, created_at) "
                     "VALUES (?, ?, ?, ?)",
                     (conversation_id, "assistant", text, utcnow()),
                 )
+                assistant_message_id = cur.lastrowid
                 conn.commit()
                 conn.close()
+            yield stream_done_event(user_message_id, assistant_message_id)
         finally:
             yield "data: [DONE]\n\n"
 
@@ -408,73 +523,40 @@ def web():
     if not query:
         return jsonify({"error": "A query is required."}), 400
 
-    conn = None
+    history = []
     is_first = False
     if conversation_id:
         conn = get_db()
         if not conversation_exists(conn, conversation_id):
             conn.close()
             return jsonify({"error": "Conversation not found."}), 404
-        history_rows = conn.execute(
-            "SELECT id FROM messages WHERE conversation_id = ?",
-            (conversation_id,),
-        ).fetchall()
-        is_first = len(history_rows) == 0
+        history = [
+            dict(r) for r in conn.execute(
+                "SELECT role, content FROM messages WHERE conversation_id = ? "
+                "ORDER BY id ASC",
+                (conversation_id,),
+            ).fetchall()
+        ]
+        is_first = len(history) == 0
+        conn.close()
 
     try:
         backend = build_backend(CONFIG)
     except BackendError as exc:
-        if conn:
-            conn.close()
         return jsonify({"error": str(exc)}), 500
 
     today = datetime.now().strftime("%A, %B %d, %Y")
     try:
-        messages = build_web_messages(
-            backend, query, CONFIG["system_prompt"], today
+        messages, results = build_web_messages(
+            backend, query, CONFIG["system_prompt"], today, history=history
         )
     except WebError as exc:
-        if conn:
-            conn.close()
         return jsonify({"error": str(exc)}), 500
 
-    def generate():
-        parts = []
-        try:
-            for chunk in backend.stream(messages):
-                parts.append(chunk)
-                yield "data: %s\n\n" % json.dumps({"delta": chunk})
-        except BackendError as exc:
-            yield "data: %s\n\n" % json.dumps({"error": str(exc)})
-        except Exception:
-            yield "data: %s\n\n" % json.dumps(
-                {"error": "Something went wrong while generating a response."}
-            )
-        else:
-            text = "".join(parts)
-            if conn and text:
-                conn.execute(
-                    "INSERT INTO messages (conversation_id, role, content, created_at) "
-                    "VALUES (?, ?, ?, ?)",
-                    (conversation_id, "user", query, utcnow()),
-                )
-                if is_first:
-                    conn.execute(
-                        "UPDATE conversations SET title = ? WHERE id = ?",
-                        (make_title(query), conversation_id),
-                    )
-                conn.execute(
-                    "INSERT INTO messages (conversation_id, role, content, created_at) "
-                    "VALUES (?, ?, ?, ?)",
-                    (conversation_id, "assistant", text, utcnow()),
-                )
-                conn.commit()
-        finally:
-            if conn:
-                conn.close()
-            yield "data: [DONE]\n\n"
-
-    return Response(generate(), mimetype="text/event-stream")
+    return buffered_web_answer(
+        backend, conversation_id, query, messages, results, None,
+        is_first=is_first,
+    )
 
 
 @app.route("/api/subagents", methods=["POST"])
@@ -526,7 +608,7 @@ def subagents():
         return jsonify({"error": str(exc)}), 500
 
     today = datetime.now().strftime("%A, %B %d, %Y")
-    web_context = search_task_context(backend, task, today)
+    results, web_context = search_with_results(backend, task, today)
     try:
         result = run_subagents(
             backend,
@@ -548,27 +630,36 @@ def subagents():
             {"error": "Something went wrong running the subagents."}
         ), 500
 
+    user_message_id = None
+    assistant_message_id = None
     if conn:
-        conn.execute(
+        cur = conn.execute(
             "INSERT INTO messages (conversation_id, role, content, created_at) "
             "VALUES (?, ?, ?, ?)",
             (conversation_id, "user", task, utcnow()),
         )
+        user_message_id = cur.lastrowid
         if is_first:
             conn.execute(
                 "UPDATE conversations SET title = ? WHERE id = ?",
                 (make_title(task), conversation_id),
             )
-        synthesis = (result.get("synthesis") or "").strip()
+        synthesis = linkify_citations(
+            (result.get("synthesis") or "").strip(), results
+        )
         if synthesis:
-            conn.execute(
+            result["synthesis"] = synthesis
+            cur = conn.execute(
                 "INSERT INTO messages (conversation_id, role, content, created_at) "
                 "VALUES (?, ?, ?, ?)",
                 (conversation_id, "assistant", synthesis, utcnow()),
             )
+            assistant_message_id = cur.lastrowid
         conn.commit()
         conn.close()
 
+    result["user_message_id"] = user_message_id
+    result["assistant_message_id"] = assistant_message_id
     return jsonify(result)
 
 

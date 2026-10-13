@@ -49,12 +49,44 @@ function renderRich(text) {
   return html;
 }
 
-function addMessage(role, text, streaming) {
+const rawTextByEl = new WeakMap();
+const REACT_EMOJIS = ["\uD83D\uDC4D", "\u2764\uFE0F", "\uD83D\uDE02",
+                      "\uD83D\uDE2E", "\uD83D\uDE22", "\uD83C\uDF89"];
+
+function setReactionBadge(div, emoji) {
+  let badge = div.querySelector(":scope > .reaction-badge");
+  if (!emoji) {
+    if (badge) badge.remove();
+    return;
+  }
+  if (!badge) {
+    badge = document.createElement("div");
+    badge.className = "reaction-badge";
+    div.appendChild(badge);
+  }
+  badge.textContent = emoji;
+}
+
+function addMessage(role, text, streaming, opts) {
+  opts = opts || {};
   const div = document.createElement("div");
   div.className = "message " + role + (streaming ? " streaming" : "");
-  div.innerHTML = renderRich(text);
+  if (opts.id) div.dataset.messageId = opts.id;
+  const pickerBtns = REACT_EMOJIS.map(function (e) {
+    return '<button class="emoji-option" data-emoji="' + e + '">' + e + "</button>";
+  }).join("");
+  div.innerHTML =
+    '<div class="message-content">' + renderRich(text) + "</div>" +
+    '<div class="message-actions">' +
+    '<button class="action-btn" data-action="react" title="React">\uD83D\uDE0A</button>' +
+    '<button class="action-btn" data-action="reply" title="Reply">\u21A9\uFE0F</button>' +
+    '<button class="action-btn" data-action="copy" title="Copy">\uD83D\uDCCB</button>' +
+    "</div>" +
+    '<div class="emoji-picker hidden">' + pickerBtns + "</div>";
+  rawTextByEl.set(div, text);
   messagesEl.appendChild(div);
   messagesEl.scrollTop = messagesEl.scrollHeight;
+  setReactionBadge(div, opts.reaction);
   return div;
 }
 
@@ -118,7 +150,8 @@ async function selectConversation(id) {
   clearError();
   const data = await api("/api/conversations/" + id);
   for (const msg of data.messages) {
-    addMessage(msg.role, msg.content, false);
+    addMessage(msg.role, msg.content, false,
+               { id: msg.id, reaction: msg.reactions });
   }
   await loadConversations();
 }
@@ -141,6 +174,7 @@ async function streamInto(url, body, bubble) {
   const decoder = new TextDecoder();
   let buffer = "";
   let fullText = "";
+  let doneInfo = null;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -162,8 +196,11 @@ async function streamInto(url, body, bubble) {
         }
         if (obj.delta) {
           fullText += obj.delta;
-          bubble.innerHTML = renderRich(fullText);
+          bubble.querySelector(".message-content").innerHTML = renderRich(fullText);
           messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+        if (obj.done) {
+          doneInfo = obj;
         }
         if (obj.error) {
           throw new Error(obj.error);
@@ -172,24 +209,35 @@ async function streamInto(url, body, bubble) {
     }
   }
 
-  return fullText;
+  return { text: fullText, done: doneInfo };
 }
 
 async function sendMessage(text) {
   clearError();
-  addMessage("user", text, false);
+  const userBubble = addMessage("user", text, false);
   const bubble = addMessage("assistant", "", true);
   isStreaming = true;
   sendBtn.disabled = true;
 
   try {
-    const fullText = await streamInto("/api/chat", {
+    const result = await streamInto("/api/chat", {
       conversation_id: currentConversationId,
       message: text,
     }, bubble);
+    const fullText = result.text;
     bubble.classList.remove("streaming");
     if (!fullText) {
       bubble.remove();
+    } else {
+      rawTextByEl.set(bubble, fullText);
+      if (result.done) {
+        if (result.done.user_message_id) {
+          userBubble.dataset.messageId = result.done.user_message_id;
+        }
+        if (result.done.assistant_message_id) {
+          bubble.dataset.messageId = result.done.assistant_message_id;
+        }
+      }
     }
     // Titles are set from the first message, refresh the sidebar.
     await loadConversations();
@@ -205,7 +253,7 @@ async function sendMessage(text) {
 
 async function runSubagents(task) {
   clearError();
-  addMessage("user", "/team " + task, false);
+  const userBubble = addMessage("user", "/team " + task, false);
   const bubble = addMessage("assistant", "Consulting the team...", true);
   isStreaming = true;
   sendBtn.disabled = true;
@@ -221,7 +269,14 @@ async function runSubagents(task) {
     });
 
     const text = data.synthesis || "The team returned no merged answer.";
-    bubble.innerHTML = renderRich(text);
+    bubble.querySelector(".message-content").innerHTML = renderRich(text);
+    rawTextByEl.set(bubble, text);
+    if (data.user_message_id) {
+      userBubble.dataset.messageId = data.user_message_id;
+    }
+    if (data.assistant_message_id) {
+      bubble.dataset.messageId = data.assistant_message_id;
+    }
     bubble.classList.remove("streaming");
     await loadConversations();
   } catch (e) {
@@ -236,19 +291,30 @@ async function runSubagents(task) {
 
 async function runWebSearch(query) {
   clearError();
-  addMessage("user", "/web " + query, false);
+  const userBubble = addMessage("user", "/web " + query, false);
   const bubble = addMessage("assistant", "Searching the web...", true);
   isStreaming = true;
   sendBtn.disabled = true;
 
   try {
-    const fullText = await streamInto("/api/web", {
+    const result = await streamInto("/api/web", {
       query: query,
       conversation_id: currentConversationId,
     }, bubble);
+    const fullText = result.text;
     bubble.classList.remove("streaming");
     if (!fullText) {
       bubble.remove();
+    } else {
+      rawTextByEl.set(bubble, fullText);
+      if (result.done) {
+        if (result.done.user_message_id) {
+          userBubble.dataset.messageId = result.done.user_message_id;
+        }
+        if (result.done.assistant_message_id) {
+          bubble.dataset.messageId = result.done.assistant_message_id;
+        }
+      }
     }
     await loadConversations();
   } catch (e) {
@@ -260,6 +326,68 @@ async function runWebSearch(query) {
     chatInput.focus();
   }
 }
+
+// Message actions: react, reply, copy. One delegated listener.
+messagesEl.addEventListener("click", async (e) => {
+  const msgEl = e.target.closest(".message");
+  const btn = e.target.closest("[data-action], .emoji-option");
+  if (btn && msgEl) {
+    e.stopPropagation();
+    const raw = rawTextByEl.get(msgEl) || "";
+    if (btn.classList.contains("emoji-option")) {
+      msgEl.querySelector(".emoji-picker").classList.add("hidden");
+      const id = msgEl.dataset.messageId;
+      if (!id) return;
+      try {
+        const data = await api("/api/messages/" + id + "/react", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ emoji: btn.dataset.emoji }),
+        });
+        setReactionBadge(msgEl, data.reaction);
+      } catch (err) {
+        showError("Couldn't save the reaction.");
+      }
+      return;
+    }
+    const action = btn.dataset.action;
+    if (action === "copy") {
+      try {
+        await navigator.clipboard.writeText(raw);
+        const orig = btn.textContent;
+        btn.textContent = "\u2713";
+        setTimeout(() => { btn.textContent = orig; }, 1000);
+      } catch (err) {
+        showError("Copy failed.");
+      }
+    } else if (action === "reply") {
+      const lines = raw.split("\n").slice(0, 4).join("\n");
+      const short = lines.length > 200 ? lines.slice(0, 200) + "..." : lines;
+      const quoted = short.split("\n").map((l) => "> " + l).join("\n");
+      chatInput.value = quoted + "\n\n" + chatInput.value;
+      chatInput.focus();
+    } else if (action === "react") {
+      msgEl.querySelector(".emoji-picker").classList.toggle("hidden");
+    }
+    return;
+  }
+  // Touch devices have no hover: tapping a message toggles its actions.
+  // Link taps are left alone.
+  if (msgEl && !e.target.closest("a") &&
+      window.matchMedia("(hover: none)").matches) {
+    msgEl.classList.toggle("show-actions");
+  }
+});
+
+// Tapping anywhere else closes open emoji pickers.
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".emoji-picker") &&
+      !e.target.closest('[data-action="react"]')) {
+    document.querySelectorAll(".emoji-picker").forEach((p) => {
+      p.classList.add("hidden");
+    });
+  }
+});
 
 chatForm.addEventListener("submit", (e) => {
   e.preventDefault();
