@@ -45,6 +45,27 @@ function renderRich(text) {
   });
   html = html.replace(/(https?:\/\/[^\s<]+)/g,
     '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+  // Bold and italic. Links are already placeholders, so no clash.
+  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/(^|\W)\*([^*\n]+)\*(?=\W|$)/g, "$1<em>$2</em>");
+  // Markdown headers become bold lead-ins, never raw # characters.
+  html = html.replace(/^#{1,4}\s+(.+)$/gm, "<strong>$1</strong>");
+  // Consecutive "- " / "* " lines become a real list.
+  const lines = html.split("\n");
+  const out = [];
+  let inList = false;
+  lines.forEach(function (line) {
+    const m = line.match(/^\s*[-*]\s+(.*)$/);
+    if (m) {
+      if (!inList) { out.push("<ul>"); inList = true; }
+      out.push("<li>" + m[1] + "</li>");
+    } else {
+      if (inList) { out.push("</ul>"); inList = false; }
+      out.push(line);
+    }
+  });
+  if (inList) out.push("</ul>");
+  html = out.join("\n");
   html = html.replace(/\u0000(\d+)\u0000/g, (m, i) => links[Number(i)]);
   return html;
 }

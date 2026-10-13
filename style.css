@@ -458,6 +458,20 @@ body {
   color: #fff;
 }
 
+/* Rendered markdown inside messages. */
+.message ul {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.message li {
+  margin: 4px 0;
+}
+
+.message strong {
+  font-weight: 600;
+}
+
 .message {
   position: relative;
 }
