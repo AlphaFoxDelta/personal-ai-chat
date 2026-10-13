@@ -38,6 +38,12 @@ subagents:
   - name: "reviewer"
     system_prompt: "You are a careful reviewer. Check answers for mistakes, gaps, and unclear reasoning."
 
+# Smart routing: when true, the app reads each message and automatically
+# decides whether it needs a web search, the subagent team, or just a
+# normal reply. Set to false to make every message a normal reply
+# (the /web and /team commands still work as explicit overrides).
+auto_route: true
+
 # SQLite file for conversation history (relative to the project folder).
 database: "chat.db"
 

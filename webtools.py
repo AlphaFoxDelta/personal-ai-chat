@@ -136,3 +136,62 @@ def web_fetch(url, max_chars=3000):
     if resp.status_code != 200:
         return ""
     return _clean_html(resp.text)[:max_chars].strip()
+
+
+def build_web_messages(backend, query, system_prompt, today):
+    """Rewrite the query, search the web, read the top pages, and return
+    the chat messages that get the model to answer from the results.
+
+    Raises WebError when the search fails.
+    """
+    # Rewrite the question into a sharp search query first. A conversational
+    # question makes a bad search query, so resolve relative dates and strip
+    # the chit-chat before hitting DuckDuckGo.
+    search_query = query
+    try:
+        rewrite_messages = [
+            {"role": "system",
+             "content": "You rewrite questions as short web search queries."},
+            {"role": "user",
+             "content": (
+                 "Today is %s. Rewrite the following question as a short web "
+                 "search query (under 12 words). Resolve relative dates like "
+                 "'next week' or 'tonight' into actual dates. "
+                 "Output only the query, nothing else.\n\nQuestion: %s"
+                 % (today, query)
+             )},
+        ]
+        rewritten = "".join(backend.stream(rewrite_messages)).strip().strip('"')
+        if rewritten:
+            search_query = rewritten
+    except Exception:
+        pass
+
+    results = web_search(search_query)
+
+    context_parts = [
+        "[%d] %s\n%s\n%s" % (i + 1, r["title"], r["url"], r["snippet"])
+        for i, r in enumerate(results)
+    ]
+    # Read the top pages so the model works from real content, not snippets.
+    for r in results[:3]:
+        page_text = web_fetch(r["url"])
+        if page_text:
+            context_parts.append(
+                "Page content from %s:\n%s" % (r["url"], page_text)
+            )
+    context = "\n\n".join(context_parts)
+
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user",
+         "content": (
+             "Today is %s.\n\n"
+             "Answer the question below using these web search results. "
+             "Give the direct answer first with specific details "
+             "(names, dates, times). Cite sources with [1], [2] markers. "
+             "If the results do not contain the answer, say so plainly "
+             "instead of guessing.\n\n"
+             "Search results:\n%s\n\nQuestion: %s" % (today, context, query)
+         )},
+    ]

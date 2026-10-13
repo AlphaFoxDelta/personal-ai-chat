@@ -15,7 +15,7 @@ from flask import Flask, Response, jsonify, render_template, request
 
 from backends import BackendError, build_backend
 from subagents import run_subagents
-from webtools import WebError, web_fetch, web_search
+from webtools import WebError, build_web_messages, web_fetch, web_search
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -34,6 +34,7 @@ DEFAULT_CONFIG = {
         "model": "gpt-4o-mini",
     },
     "subagents": [],
+    "auto_route": True,
     "database": "chat.db",
     "port": 5000,
 }
@@ -182,6 +183,77 @@ def delete_conversation(conversation_id):
     return jsonify({"deleted": True})
 
 
+def classify_intent(backend, query, history):
+    """Decide how to handle a message: 'web', 'team', or 'chat'.
+
+    history is a list of {"role": ..., "content": ...} dicts for context.
+    Falls back to 'chat' when unsure or when classification fails.
+    """
+    recent = "\n".join(
+        "%s: %s" % (m["role"], m["content"][:300]) for m in history[-6:]
+    )
+    messages = [
+        {"role": "system",
+         "content": "You are a request router. "
+                    "Reply with exactly one word: WEB, TEAM, or CHAT."},
+        {"role": "user",
+         "content": (
+             "Classify the last user message given the conversation so far.\n\n"
+             "Reply WEB if it needs current or external information "
+             "(news, schedules, scores, prices, recent events, "
+             "anything from 2025 or later).\n"
+             "Reply TEAM only if it is a genuinely complex multi-part task "
+             "that needs several specialists working in parallel "
+             "(for example research plus code plus review in a single ask).\n"
+             "Reply CHAT for everything else: greetings, opinions, general "
+             "knowledge, coding help, follow-up chit-chat.\n\n"
+             "Conversation so far:\n%s\n\nLast message: %s"
+             % (recent or "(none)", query)
+         )},
+    ]
+    try:
+        result = "".join(backend.stream(messages)).strip().upper()
+    except Exception:
+        return "chat"
+    if "WEB" in result:
+        return "web"
+    if "TEAM" in result:
+        return "team"
+    return "chat"
+
+
+def team_response(backend, conversation_id, task, agents):
+    """Run the subagent team and stream the merged answer as SSE."""
+    try:
+        result = run_subagents(backend, task, agents, CONFIG["system_prompt"])
+    except BackendError as exc:
+        return jsonify({"error": str(exc)}), 500
+    except Exception:
+        return jsonify({"error": "Something went wrong running the subagents."}), 500
+
+    text = (result.get("synthesis") or "").strip()
+    if not text:
+        text = "The team returned no merged answer."
+
+    def generate():
+        try:
+            # Stream in chunks so the frontend's SSE handling works unchanged.
+            for i in range(0, len(text), 120):
+                yield "data: %s\n\n" % json.dumps({"delta": text[i:i + 120]})
+        finally:
+            conn = get_db()
+            conn.execute(
+                "INSERT INTO messages (conversation_id, role, content, created_at) "
+                "VALUES (?, ?, ?, ?)",
+                (conversation_id, "assistant", text, utcnow()),
+            )
+            conn.commit()
+            conn.close()
+            yield "data: [DONE]\n\n"
+
+    return Response(generate(), mimetype="text/event-stream")
+
+
 @app.route("/api/chat", methods=["POST"])
 def chat():
     data = request.get_json(force=True, silent=True) or {}
@@ -217,14 +289,36 @@ def chat():
     conn.commit()
     conn.close()
 
+    history_dicts = [dict(r) for r in history_rows]
     messages = [{"role": "system", "content": CONFIG["system_prompt"]}]
-    messages += [dict(r) for r in history_rows]
+    messages += history_dicts
     messages.append({"role": "user", "content": message})
 
     try:
         backend = build_backend(CONFIG)
     except BackendError as exc:
         return jsonify({"error": str(exc)}), 500
+
+    # Smart routing: decide whether this needs the web, the team, or just
+    # a normal reply. Short messages skip the extra model call.
+    intent = "chat"
+    if CONFIG.get("auto_route", True) and len(message) > 20:
+        intent = classify_intent(backend, message, history_dicts)
+
+    if intent == "web":
+        today = datetime.now().strftime("%A, %B %d, %Y")
+        try:
+            messages = build_web_messages(
+                backend, message, CONFIG["system_prompt"], today
+            )
+        except WebError:
+            # Web failed; fall back to a normal reply instead of erroring.
+            pass
+    elif intent == "team":
+        agents = CONFIG.get("subagents") or []
+        if agents:
+            return team_response(backend, conversation_id, message, agents)
+        # No team configured; fall through to a normal reply.
 
     def generate():
         parts = []
@@ -260,9 +354,9 @@ def web():
     """Answer a question using live web search results.
 
     Request body: {"query": "...", "conversation_id": 123}
-    Searches DuckDuckGo (free, no key), then asks the model to answer
-    using the results. Streams the answer like /api/chat and saves the
-    exchange to the conversation when conversation_id is given.
+    Explicit version of what the chat router does automatically.
+    Streams the answer like /api/chat and saves the exchange to the
+    conversation when conversation_id is given.
     """
     data = request.get_json(force=True, silent=True) or {}
     query = (data.get("query") or "").strip()
@@ -284,8 +378,6 @@ def web():
         ).fetchall()
         is_first = len(history_rows) == 0
 
-    today = datetime.now().strftime("%A, %B %d, %Y")
-
     try:
         backend = build_backend(CONFIG)
     except BackendError as exc:
@@ -293,66 +385,15 @@ def web():
             conn.close()
         return jsonify({"error": str(exc)}), 500
 
-    # Rewrite the question into a sharp search query first. A conversational
-    # question makes a bad search query, so resolve relative dates and strip
-    # the chit-chat before hitting DuckDuckGo.
-    search_query = query
+    today = datetime.now().strftime("%A, %B %d, %Y")
     try:
-        rewrite_messages = [
-            {"role": "system",
-             "content": "You rewrite questions as short web search queries."},
-            {"role": "user",
-             "content": (
-                 "Today is %s. Rewrite the following question as a short web "
-                 "search query (under 12 words). Resolve relative dates like "
-                 "'next week' or 'tonight' into actual dates. "
-                 "Output only the query, nothing else.\n\nQuestion: %s"
-                 % (today, query)
-             )},
-        ]
-        rewritten = "".join(backend.stream(rewrite_messages)).strip().strip('"')
-        if rewritten:
-            search_query = rewritten
-    except Exception:
-        pass
-
-    try:
-        results = web_search(search_query)
+        messages = build_web_messages(
+            backend, query, CONFIG["system_prompt"], today
+        )
     except WebError as exc:
         if conn:
             conn.close()
         return jsonify({"error": str(exc)}), 500
-
-    context_parts = [
-        "[%d] %s\n%s\n%s" % (i + 1, r["title"], r["url"], r["snippet"])
-        for i, r in enumerate(results)
-    ]
-    # Read the top pages so the model works from real content,
-    # not just snippets.
-    for r in results[:3]:
-        page_text = web_fetch(r["url"])
-        if page_text:
-            context_parts.append(
-                "Page content from %s:\n%s" % (r["url"], page_text)
-            )
-    context = "\n\n".join(context_parts)
-
-    messages = [
-        {"role": "system", "content": CONFIG["system_prompt"]},
-        {
-            "role": "user",
-            "content": (
-                "Today is %s.\n\n"
-                "Answer the question below using these web search results. "
-                "Give the direct answer first with specific details "
-                "(names, dates, times). Cite sources with [1], [2] markers. "
-                "If the results do not contain the answer, say so plainly "
-                "instead of guessing.\n\n"
-                "Search results:\n%s\n\nQuestion: %s"
-                % (today, context, query)
-            ),
-        },
-    ]
 
     def generate():
         parts = []

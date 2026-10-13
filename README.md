@@ -26,6 +26,7 @@ If Ollama is not running when you send a message, the app tells you plainly in t
 - Swappable backend: Ollama for free local use, or any OpenAI-compatible API if you add a key later.
 - Subagents: type `/team <task>` in the chat box and a team of background workers tackles it in parallel, then merges their answers into one reply. Still free, still local.
 - Web search: type `/web <question>` and Kitsune searches DuckDuckGo (free, no key) and answers using the results.
+- Smart routing: just ask. The app figures out whether your message needs a web search, the subagent team, or a normal reply. No commands needed.
 
 ## Subagents
 
@@ -36,6 +37,10 @@ The default roster is a researcher, a coder, and a reviewer, defined under `suba
 There's also a raw endpoint if you want to call it yourself: `POST /api/subagents` with `{"task": "..."}` returns each subagent's answer plus the merged reply.
 
 Everything runs against your configured backend, so on Ollama subagents cost nothing. The tradeoff is speed: they share your machine, so a team run takes longer than a normal reply.
+
+## Smart routing
+
+You don't have to remember the commands. Every message is read first and the app decides: web search for current info, the subagent team for big multi-part tasks, or a normal reply for everything else. Short messages skip the check. Turn it off with `auto_route: false` in `config.yaml` if you'd rather drive yourself. `/web` and `/team` still work as explicit overrides.
 
 ## Web search
 
@@ -54,6 +59,7 @@ Everything lives in `config.yaml` (copy it from `config.example.yaml`). The real
 - `ollama.base_url` / `ollama.model`: where Ollama listens and which model to use.
 - `openai_compatible.base_url` / `api_key` / `model`: endpoint, key, and model for a paid API.
 - `subagents`: the team roster for `/team`. Each entry has a `name` and a `system_prompt`.
+- `auto_route`: `true` to automatically route messages to web search, the team, or normal chat. `false` for plain chat only.
 - `database`: SQLite file for chat history.
 - `port`: port for the web UI.
 
