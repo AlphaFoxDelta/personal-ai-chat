@@ -22,7 +22,11 @@
       </header>
       <div id="messages" class="messages"></div>
       <div id="error-bar" class="error-bar hidden"></div>
+      <div id="attach-chips" class="attach-chips hidden"></div>
       <form id="chat-form" class="composer">
+        <input type="file" id="file-input" multiple hidden>
+        <button type="button" id="attach-btn" class="icon-btn" title="Attach files">📎</button>
+        <button type="button" id="mic-btn" class="icon-btn" title="Voice input">🎤</button>
         <input id="chat-input" type="text" placeholder="Type a message..." autocomplete="off">
         <button type="submit" id="send-btn">Send</button>
       </form>

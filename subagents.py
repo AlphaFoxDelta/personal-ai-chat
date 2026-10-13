@@ -13,7 +13,7 @@ sluggish on most machines.
 
 import concurrent.futures
 
-from backends import BackendError
+from backends import BackendError, attach_images
 from webtools import polish_text
 
 
@@ -33,12 +33,14 @@ def ask(backend, system_prompt, task, web_context=""):
 
 
 def run_subagents(backend, task, agents, system_prompt, synthesize=True,
-                  max_workers=3, web_context=""):
+                  max_workers=3, web_context="", images=None):
     """Fan a task out to subagents in parallel and return their results.
 
     agents is a list of {"name": ..., "system_prompt": ...} dicts.
     system_prompt is the main assistant persona, used for the merge step.
     web_context is shared web search background handed to every subagent.
+    images is an optional [(name, mime, base64)] list shown to the
+    synthesis step (workers are text-only).
 
     Returns {"results": [...], "synthesis": str or None}. Each result is
     {"name": ..., "output": ...} or {"name": ..., "error": ...} so one
@@ -87,6 +89,8 @@ def run_subagents(backend, task, agents, system_prompt, synthesize=True,
                 ),
             },
         ]
+        if images:
+            attach_images(synthesis_messages, images, backend)
         synthesis = polish_text(
             "".join(backend.stream(synthesis_messages)).strip()
         )

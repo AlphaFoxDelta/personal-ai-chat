@@ -20,6 +20,37 @@ class BackendError(Exception):
     """Raised when the model backend cannot fulfill a request."""
 
 
+def attach_images(messages, images, backend):
+    """Attach images to the last user message in the backend's vision format.
+
+    images is a list of (name, mime, base64_data). Ollama takes an
+    "images" array of base64 blobs; OpenAI-compatible APIs take content
+    parts with image_url data URIs. Returns the messages list (mutated).
+    If the model cannot see images, the backend will raise BackendError
+    with the provider's message.
+    """
+    if not images:
+        return messages
+    target = None
+    for msg in reversed(messages):
+        if msg.get("role") == "user":
+            target = msg
+            break
+    if target is None:
+        return messages
+    if isinstance(backend, OllamaBackend):
+        target["images"] = [b64 for _, _, b64 in images]
+    else:
+        parts = [{"type": "text", "text": target.get("content", "")}]
+        for _name, mime, b64 in images:
+            parts.append({
+                "type": "image_url",
+                "image_url": {"url": "data:%s;base64,%s" % (mime, b64)},
+            })
+        target["content"] = parts
+    return messages
+
+
 class OllamaBackend:
     def __init__(self, base_url, model):
         self.base_url = base_url.rstrip("/")

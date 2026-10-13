@@ -11,6 +11,141 @@ const chatInput = document.getElementById("chat-input");
 const sendBtn = document.getElementById("send-btn");
 const conversationListEl = document.getElementById("conversation-list");
 const newChatBtn = document.getElementById("new-chat");
+const attachBtn = document.getElementById("attach-btn");
+const micBtn = document.getElementById("mic-btn");
+const fileInput = document.getElementById("file-input");
+const attachChips = document.getElementById("attach-chips");
+
+// Attachments: files staged in the composer, sent with the next message.
+let pendingAttachments = []; // {name, mime, dataUrl}
+
+function renderChips() {
+  attachChips.innerHTML = "";
+  attachChips.classList.toggle("hidden", pendingAttachments.length === 0);
+  pendingAttachments.forEach(function (att, i) {
+    const chip = document.createElement("div");
+    chip.className = "chip";
+    const thumb = att.mime.startsWith("image/")
+      ? '<img src="' + att.dataUrl + '" alt="">'
+      : "📄 ";
+    chip.innerHTML = thumb + "<span></span>";
+    chip.querySelector("span").textContent = att.name;
+    const rm = document.createElement("button");
+    rm.textContent = "×";
+    rm.title = "Remove";
+    rm.addEventListener("click", function () {
+      pendingAttachments.splice(i, 1);
+      renderChips();
+    });
+    chip.appendChild(rm);
+    attachChips.appendChild(chip);
+  });
+}
+
+function takeAttachments() {
+  const out = pendingAttachments.map(function (att) {
+    return {
+      name: att.name,
+      mime: att.mime,
+      data: att.dataUrl.split(",")[1] || "",
+    };
+  });
+  pendingAttachments = [];
+  renderChips();
+  fileInput.value = "";
+  return out;
+}
+
+attachBtn.addEventListener("click", function () {
+  fileInput.click();
+});
+
+fileInput.addEventListener("change", function () {
+  Array.from(fileInput.files || []).forEach(function (file) {
+    if (pendingAttachments.length >= 5) return;
+    const reader = new FileReader();
+    reader.onload = function () {
+      pendingAttachments.push({
+        name: file.name,
+        mime: file.type || "application/octet-stream",
+        dataUrl: reader.result,
+      });
+      renderChips();
+    };
+    reader.readAsDataURL(file);
+  });
+});
+
+// Voice input via the browser's speech recognition (no key needed).
+let recognition = null;
+let recognizing = false;
+(function initVoice() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    micBtn.style.display = "none";
+    return;
+  }
+  micBtn.addEventListener("click", function () {
+    if (recognizing) {
+      recognition.stop();
+      return;
+    }
+    recognition = new SR();
+    recognition.lang = navigator.language || "en-US";
+    recognition.interimResults = true;
+    recognition.onresult = function (e) {
+      let finalText = "";
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) finalText += e.results[i][0].transcript;
+        else interim += e.results[i][0].transcript;
+      }
+      chatInput.value = (finalText || interim).trim();
+    };
+    recognition.onend = function () {
+      recognizing = false;
+      micBtn.classList.remove("recording");
+    };
+    recognition.onerror = function () {
+      recognizing = false;
+      micBtn.classList.remove("recording");
+    };
+    recognition.start();
+    recognizing = true;
+    micBtn.classList.add("recording");
+    chatInput.focus();
+  });
+})();
+
+// Terminal-style input history: up/down arrows recall sent messages.
+const inputHistory = [];
+let histIdx = -1;
+let histDraft = "";
+
+chatInput.addEventListener("keydown", function (e) {
+  if (e.key === "ArrowUp") {
+    if (!inputHistory.length) return;
+    e.preventDefault();
+    if (histIdx === -1) histDraft = chatInput.value;
+    histIdx = Math.min(histIdx + 1, inputHistory.length - 1);
+    chatInput.value = inputHistory[inputHistory.length - 1 - histIdx];
+  } else if (e.key === "ArrowDown") {
+    if (histIdx === -1) return;
+    e.preventDefault();
+    histIdx -= 1;
+    chatInput.value = histIdx === -1
+      ? histDraft
+      : inputHistory[inputHistory.length - 1 - histIdx];
+  } else if (histIdx !== -1 && e.key.length === 1) {
+    histIdx = -1; // typing abandons history browsing
+  }
+});
+
+function pushHistory(text) {
+  if (text) inputHistory.push(text);
+  histIdx = -1;
+  histDraft = "";
+}
 
 async function api(path, options) {
   const res = await fetch(path, options);
@@ -114,9 +249,6 @@ function applyAvatar(id) {
   const url = avatarUrl(id);
   document.getElementById("profile-avatar").src = url;
   document.getElementById("avatar-current-name").textContent = avatarName(id);
-  document.querySelectorAll(".msg-avatar").forEach(function (img) {
-    img.src = url;
-  });
   document.querySelectorAll(".profile-avatar-option").forEach(function (btn) {
     btn.classList.toggle("selected", btn.dataset.avatar === id);
   });
@@ -240,9 +372,6 @@ function addMessage(role, text, streaming, opts) {
     return '<button class="emoji-option" data-emoji="' + e + '">' + e + "</button>";
   }).join("");
   div.innerHTML =
-    (role === "assistant"
-      ? '<img class="msg-avatar" src="' + avatarUrl(getAvatarId()) + '" alt="">'
-      : "") +
     '<div class="message-content">' + renderRich(text) + "</div>" +
     '<div class="message-actions">' +
     '<button class="action-btn" data-action="react" title="React">\uD83D\uDE0A</button>' +
@@ -382,7 +511,11 @@ async function streamInto(url, body, bubble) {
 
 async function sendMessage(text) {
   clearError();
-  const userBubble = addMessage("user", text, false);
+  const attachments = takeAttachments();
+  const label = text + attachments.map(function (a) {
+    return "\n[Attached: " + a.name + "]";
+  }).join("");
+  const userBubble = addMessage("user", label, false);
   const bubble = addMessage("assistant", "", true);
   setBusy(true);
   sendBtn.disabled = true;
@@ -391,6 +524,7 @@ async function sendMessage(text) {
     const result = await streamInto("/api/chat", {
       conversation_id: currentConversationId,
       message: text,
+      attachments: attachments,
     }, bubble);
     const fullText = result.text;
     bubble.classList.remove("streaming");
@@ -422,6 +556,7 @@ async function sendMessage(text) {
 
 async function runSubagents(task) {
   clearError();
+  const attachments = takeAttachments();
   const userBubble = addMessage("user", "/team " + task, false);
   const bubble = addMessage("assistant", "Consulting the team...", true);
   setBusy(true);
@@ -434,6 +569,7 @@ async function runSubagents(task) {
       body: JSON.stringify({
         task: task,
         conversation_id: currentConversationId,
+        attachments: attachments,
       }),
     });
 
@@ -461,6 +597,7 @@ async function runSubagents(task) {
 
 async function runWebSearch(query) {
   clearError();
+  const attachments = takeAttachments();
   const userBubble = addMessage("user", "/web " + query, false);
   const bubble = addMessage("assistant", "Searching the web...", true);
   setBusy(true);
@@ -470,6 +607,7 @@ async function runWebSearch(query) {
     const result = await streamInto("/api/web", {
       query: query,
       conversation_id: currentConversationId,
+      attachments: attachments,
     }, bubble);
     const fullText = result.text;
     bubble.classList.remove("streaming");
@@ -564,8 +702,10 @@ chatForm.addEventListener("submit", (e) => {
   e.preventDefault();
   if (isStreaming) return;
   const text = chatInput.value.trim();
-  if (!text) return;
+  const hasFiles = pendingAttachments.length > 0;
+  if (!text && !hasFiles) return;
   chatInput.value = "";
+  pushHistory(text);
   const lower = text.toLowerCase();
   if (lower.startsWith("/team ")) {
     const task = text.slice(6).trim();

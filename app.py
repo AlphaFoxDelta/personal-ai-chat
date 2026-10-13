@@ -5,6 +5,7 @@ Then open http://localhost:5000 in a browser.
 """
 
 import copy
+import base64
 import json
 import os
 import sqlite3
@@ -13,7 +14,7 @@ from datetime import datetime, timezone
 import yaml
 from flask import Flask, Response, jsonify, render_template, request
 
-from backends import BackendError, build_backend
+from backends import BackendError, attach_images, build_backend
 from subagents import run_subagents
 from webtools import (WebError, build_web_messages, linkify_citations,
                       polish_text,
@@ -285,6 +286,48 @@ def log_activity(kind, label, detail=""):
         pass  # Activity logging is best-effort; never break the request.
 
 
+TEXT_EXTENSIONS = (".txt", ".md", ".py", ".js", ".json", ".yaml", ".yml",
+                   ".csv", ".html", ".css", ".sh", ".toml", ".ini", ".log")
+
+MAX_ATTACHMENTS = 5
+MAX_TEXT_CHARS = 8000
+
+
+def parse_attachments(data):
+    """Split request attachments into (text_blocks, images).
+
+    text_blocks is [(name, text)] for readable files, inlined as context.
+    images is [(name, mime, base64)] for vision-capable backends.
+    """
+    text_blocks = []
+    images = []
+    for att in (data.get("attachments") or [])[:MAX_ATTACHMENTS]:
+        name = att.get("name", "file")
+        mime = att.get("mime", "")
+        b64 = att.get("data", "")
+        if not b64:
+            continue
+        if mime.startswith("text/") or name.lower().endswith(TEXT_EXTENSIONS):
+            try:
+                text = base64.b64decode(b64).decode("utf-8", "replace")
+            except Exception:
+                continue
+            text_blocks.append((name, text[:MAX_TEXT_CHARS]))
+        elif mime.startswith("image/"):
+            images.append((name, mime, b64))
+    return text_blocks, images
+
+
+def augment_message(message, text_blocks, images):
+    """Fold attachments into the message text sent to the model."""
+    parts = [message] if message else []
+    for name, text in text_blocks:
+        parts.append("[Attached file: %s]\n%s" % (name, text))
+    for name, _mime, _b64 in images:
+        parts.append("[Image attached: %s]" % name)
+    return "\n\n".join(parts)
+
+
 def utcnow():
     return datetime.now(timezone.utc).isoformat()
 
@@ -419,13 +462,14 @@ def classify_intent(backend, query, history):
     return "chat"
 
 
-def team_response(backend, conversation_id, task, agents, user_message_id):
+def team_response(backend, conversation_id, task, agents, user_message_id,
+                  images=None):
     """Run the subagent team and stream the merged answer as SSE."""
     today = datetime.now().strftime("%A, %B %d, %Y")
     results, web_context = search_with_results(backend, task, today)
     try:
         result = run_subagents(backend, task, agents, CONFIG["system_prompt"],
-                               web_context=web_context)
+                               web_context=web_context, images=images)
     except BackendError as exc:
         return jsonify({"error": str(exc)}), 500
     except Exception:
@@ -492,7 +536,7 @@ def stream_done_event(user_message_id, assistant_message_id):
 
 
 def buffered_web_answer(backend, conversation_id, save_user_text, messages,
-                        results, user_message_id, is_first=False):
+                        results, user_message_id, is_first=False, images=None):
     """Run a web-grounded answer to completion, linkify its citations,
     save the exchange, then stream the final text as SSE chunks.
 
@@ -500,7 +544,9 @@ def buffered_web_answer(backend, conversation_id, save_user_text, messages,
     [N] citation markers into clickable links before anything is shown.
     """
     try:
-        raw = "".join(backend.stream(messages)).strip()
+        raw = "".join(
+            backend.stream(attach_images(messages, images, backend))
+        ).strip()
     except BackendError as exc:
         return jsonify({"error": str(exc)}), 500
     except Exception:
@@ -556,8 +602,10 @@ def chat():
     data = request.get_json(force=True, silent=True) or {}
     message = (data.get("message") or "").strip()
     conversation_id = data.get("conversation_id")
+    text_blocks, images = parse_attachments(data)
+    full_message = augment_message(message, text_blocks, images)
 
-    if not message:
+    if not message and not text_blocks and not images:
         return jsonify({"error": "A message is required."}), 400
     if not conversation_id:
         return jsonify({"error": "A conversation_id is required."}), 400
@@ -576,7 +624,7 @@ def chat():
     cur = conn.execute(
         "INSERT INTO messages (conversation_id, role, content, created_at) "
         "VALUES (?, ?, ?, ?)",
-        (conversation_id, "user", message, utcnow()),
+        (conversation_id, "user", full_message, utcnow()),
     )
     user_message_id = cur.lastrowid
     if is_first:
@@ -590,12 +638,14 @@ def chat():
     history_dicts = [dict(r) for r in history_rows][-20:]
     messages = [{"role": "system", "content": CONFIG["system_prompt"]}]
     messages += history_dicts
-    messages.append({"role": "user", "content": message})
+    messages.append({"role": "user", "content": full_message})
 
     try:
         backend = build_backend(CONFIG)
     except BackendError as exc:
         return jsonify({"error": str(exc)}), 500
+
+    attach_images(messages, images, backend)
 
     # Smart routing: decide whether this needs the web, the team, or just
     # a normal reply. Short messages skip the extra model call.
@@ -608,7 +658,7 @@ def chat():
         log_activity("web", message, "Web search")
         try:
             messages, results = build_web_messages(
-                backend, message, CONFIG["system_prompt"], today,
+                backend, full_message, CONFIG["system_prompt"], today,
                 history=history_dicts,
             )
         except WebError:
@@ -617,14 +667,15 @@ def chat():
         else:
             return buffered_web_answer(
                 backend, conversation_id, None, messages, results,
-                user_message_id,
+                user_message_id, images=images,
             )
     elif intent == "team":
         agents = CONFIG.get("subagents") or []
         if agents:
             log_activity("team", message, "Team run")
             return team_response(
-                backend, conversation_id, message, agents, user_message_id
+                backend, conversation_id, full_message, agents,
+                user_message_id, images=images,
             )
         # No team configured; fall through to a normal reply.
 
@@ -673,11 +724,13 @@ def web():
     data = request.get_json(force=True, silent=True) or {}
     query = (data.get("query") or "").strip()
     conversation_id = data.get("conversation_id")
+    text_blocks, images = parse_attachments(data)
+    full_query = augment_message(query, text_blocks, images)
 
-    if not query:
+    if not query and not text_blocks and not images:
         return jsonify({"error": "A query is required."}), 400
 
-    log_activity("web", query, "Web search")
+    log_activity("web", query or "File search", "Web search")
 
     history = []
     is_first = False
@@ -704,14 +757,14 @@ def web():
     today = datetime.now().strftime("%A, %B %d, %Y")
     try:
         messages, results = build_web_messages(
-            backend, query, CONFIG["system_prompt"], today, history=history
+            backend, full_query, CONFIG["system_prompt"], today, history=history
         )
     except WebError as exc:
         return jsonify({"error": str(exc)}), 500
 
     return buffered_web_answer(
-        backend, conversation_id, query, messages, results, None,
-        is_first=is_first,
+        backend, conversation_id, full_query, messages, results, None,
+        is_first=is_first, images=images,
     )
 
 
@@ -732,6 +785,8 @@ def subagents():
     synthesize = data.get("synthesize", True)
     max_workers = data.get("max_workers", 3)
     conversation_id = data.get("conversation_id")
+    text_blocks, images = parse_attachments(data)
+    task = augment_message(task, text_blocks, images)
 
     if not task:
         return jsonify({"error": "A task is required."}), 400
@@ -775,6 +830,7 @@ def subagents():
             synthesize=bool(synthesize),
             max_workers=int(max_workers),
             web_context=web_context,
+            images=images,
         )
     except BackendError as exc:
         if conn:
