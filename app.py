@@ -665,8 +665,11 @@ def subagents():
 
 if __name__ == "__main__":
     init_db()
+    # Hosts like Render/Railway/Fly set PORT; bind 0.0.0.0 there so their
+    # port scan can reach the app. Local runs stay on localhost.
+    default_host = "0.0.0.0" if "PORT" in os.environ else "127.0.0.1"
     app.run(
-        host=os.environ.get("HOST", "127.0.0.1"),
+        host=os.environ.get("HOST", default_host),
         port=int(os.environ.get("PORT", CONFIG["port"])),
         debug=False,
     )
