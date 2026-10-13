@@ -24,6 +24,17 @@ If Ollama is not running when you send a message, the app tells you plainly in t
 - History saved locally in SQLite, so your chats survive restarts.
 - Branding and persona set in one config file: app name, accent color, and the system prompt that defines how the assistant behaves.
 - Swappable backend: Ollama for free local use, or any OpenAI-compatible API if you add a key later.
+- Subagents: type `/team <task>` in the chat box and a team of background workers tackles it in parallel, then merges their answers into one reply. Still free, still local.
+
+## Subagents
+
+A subagent is a background worker: one model call with its own system prompt, focused on a slice of a bigger task. When you send `/team <task>`, the task is fanned out to every subagent on the roster at once. They each answer independently, then the main model merges their answers into one reply. If one subagent fails, the rest still come through.
+
+The default roster is a researcher, a coder, and a reviewer, defined under `subagents` in `config.yaml`. Edit that list to build your own team with whatever roles and prompts you want.
+
+There is also a raw endpoint if you want to call it yourself: `POST /api/subagents` with `{"task": "..."}` returns each subagent's answer plus the merged reply.
+
+Everything runs against your configured backend, so on Ollama subagents cost nothing. The tradeoff is speed: they share your machine, so a team run takes longer than a normal reply.
 
 ## Config options
 
@@ -35,6 +46,7 @@ Everything lives in `config.yaml` (copy it from `config.example.yaml`). The real
 - `backend`: `ollama` or `openai_compatible`.
 - `ollama.base_url` / `ollama.model`: where Ollama listens and which model to use.
 - `openai_compatible.base_url` / `api_key` / `model`: endpoint, key, and model for a paid API.
+- `subagents`: the team roster for `/team`. Each entry has a `name` and a `system_prompt`.
 - `database`: SQLite file for chat history.
 - `port`: port for the web UI.
 
@@ -42,6 +54,7 @@ Everything lives in `config.yaml` (copy it from `config.example.yaml`). The real
 
 - `app.py`: Flask server, API routes, SQLite history, streaming responses.
 - `backends.py`: model backends. Ollama and OpenAI-compatible, with clean error handling.
+- `subagents.py`: parallel background workers plus the merge step.
 - `config.yaml`: your local settings (gitignored).
 - `config.example.yaml`: template to copy from.
 - `requirements.txt`: Python dependencies.

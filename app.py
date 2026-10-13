@@ -259,15 +259,18 @@ def subagents():
     """Fan a task out to subagents in parallel and return merged results.
 
     Request body: {"task": "...", "agents": [{"name": ..., "system_prompt": ...}],
-                   "synthesize": true, "max_workers": 3}
+                   "synthesize": true, "max_workers": 3,
+                   "conversation_id": 123}
     If "agents" is omitted, the presets under "subagents" in config.yaml
-    are used.
+    are used. If "conversation_id" is given, the task and the merged
+    answer are saved to that conversation like a normal chat exchange.
     """
     data = request.get_json(force=True, silent=True) or {}
     task = (data.get("task") or "").strip()
     agents = data.get("agents") or CONFIG.get("subagents") or []
     synthesize = data.get("synthesize", True)
     max_workers = data.get("max_workers", 3)
+    conversation_id = data.get("conversation_id")
 
     if not task:
         return jsonify({"error": "A task is required."}), 400
@@ -279,9 +282,24 @@ def subagents():
             }
         ), 400
 
+    conn = None
+    is_first = False
+    if conversation_id:
+        conn = get_db()
+        if not conversation_exists(conn, conversation_id):
+            conn.close()
+            return jsonify({"error": "Conversation not found."}), 404
+        history_rows = conn.execute(
+            "SELECT id FROM messages WHERE conversation_id = ?",
+            (conversation_id,),
+        ).fetchall()
+        is_first = len(history_rows) == 0
+
     try:
         backend = build_backend(CONFIG)
     except BackendError as exc:
+        if conn:
+            conn.close()
         return jsonify({"error": str(exc)}), 500
 
     try:
@@ -294,11 +312,37 @@ def subagents():
             max_workers=int(max_workers),
         )
     except BackendError as exc:
+        if conn:
+            conn.close()
         return jsonify({"error": str(exc)}), 500
     except Exception:
+        if conn:
+            conn.close()
         return jsonify(
             {"error": "Something went wrong running the subagents."}
         ), 500
+
+    if conn:
+        conn.execute(
+            "INSERT INTO messages (conversation_id, role, content, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            (conversation_id, "user", task, utcnow()),
+        )
+        if is_first:
+            conn.execute(
+                "UPDATE conversations SET title = ? WHERE id = ?",
+                (make_title(task), conversation_id),
+            )
+        synthesis = (result.get("synthesis") or "").strip()
+        if synthesis:
+            conn.execute(
+                "INSERT INTO messages (conversation_id, role, content, created_at) "
+                "VALUES (?, ?, ?, ?)",
+                (conversation_id, "assistant", synthesis, utcnow()),
+            )
+        conn.commit()
+        conn.close()
+
     return jsonify(result)
 
 

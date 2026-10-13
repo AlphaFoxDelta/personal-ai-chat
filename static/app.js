@@ -1,4 +1,5 @@
-// Personal AI chat frontend: sidebar conversations, streaming chat.
+// Personal AI chat frontend: sidebar conversations, streaming chat,
+// plus the /team command which fans a task out to subagents.
 
 let currentConversationId = null;
 let isStreaming = false;
@@ -179,13 +180,59 @@ async function sendMessage(text) {
   }
 }
 
+async function runSubagents(task) {
+  clearError();
+  addMessage("user", "/team " + task, false);
+  const bubble = addMessage("assistant", "Consulting the team...", true);
+  isStreaming = true;
+  sendBtn.disabled = true;
+
+  try {
+    const data = await api("/api/subagents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        task: task,
+        conversation_id: currentConversationId,
+      }),
+    });
+
+    let text = data.synthesis || "The team returned no merged answer.";
+    const notes = (data.results || []).map(function (r) {
+      return "- " + r.name + ": " + (r.output || r.error || "(no output)");
+    });
+    if (notes.length > 0) {
+      text += "\n\n---\nTeam notes:\n" + notes.join("\n");
+    }
+    bubble.textContent = text;
+    bubble.classList.remove("streaming");
+    await loadConversations();
+  } catch (e) {
+    bubble.remove();
+    showError(e.message);
+  } finally {
+    isStreaming = false;
+    sendBtn.disabled = false;
+    chatInput.focus();
+  }
+}
+
 chatForm.addEventListener("submit", (e) => {
   e.preventDefault();
   if (isStreaming) return;
   const text = chatInput.value.trim();
   if (!text) return;
   chatInput.value = "";
-  sendMessage(text);
+  if (text.toLowerCase().startsWith("/team ")) {
+    const task = text.slice(6).trim();
+    if (!task) {
+      showError("Usage: /team <task>");
+      return;
+    }
+    runSubagents(task);
+  } else {
+    sendMessage(text);
+  }
 });
 
 newChatBtn.addEventListener("click", () => {
