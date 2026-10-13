@@ -230,9 +230,6 @@ async function loadBranding() {
     document.getElementById("app-name").textContent = cfg.app_name;
     document.getElementById("page-title").textContent = cfg.app_name;
     document.getElementById("profile-name").textContent = cfg.app_name;
-    if (cfg.persona_vibe) {
-      document.getElementById("profile-vibe").textContent = cfg.persona_vibe;
-    }
     document.documentElement.style.setProperty("--accent", cfg.accent_color);
   } catch (e) {
     // Branding is cosmetic, keep defaults on failure.

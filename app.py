@@ -311,7 +311,6 @@ def api_config():
         {
             "app_name": CONFIG["app_name"],
             "accent_color": CONFIG["accent_color"],
-            "persona_vibe": CONFIG["persona"]["vibe"],
         }
     )
 
