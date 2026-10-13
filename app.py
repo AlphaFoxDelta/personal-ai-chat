@@ -15,7 +15,7 @@ from flask import Flask, Response, jsonify, render_template, request
 
 from backends import BackendError, build_backend
 from subagents import run_subagents
-from webtools import WebError, web_search
+from webtools import WebError, web_fetch, web_search
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -291,19 +291,34 @@ def web():
             conn.close()
         return jsonify({"error": str(exc)}), 500
 
-    context = "\n\n".join(
+    context_parts = [
         "[%d] %s\n%s\n%s" % (i + 1, r["title"], r["url"], r["snippet"])
         for i, r in enumerate(results)
-    )
+    ]
+    # Read the top pages so the model works from real content,
+    # not just snippets.
+    for r in results[:3]:
+        page_text = web_fetch(r["url"])
+        if page_text:
+            context_parts.append(
+                "Page content from %s:\n%s" % (r["url"], page_text)
+            )
+    context = "\n\n".join(context_parts)
+
+    today = datetime.now().strftime("%A, %B %d, %Y")
     messages = [
         {"role": "system", "content": CONFIG["system_prompt"]},
         {
             "role": "user",
             "content": (
+                "Today is %s.\n\n"
                 "Answer the question below using these web search results. "
-                "If the results do not cover it, say so plainly instead of "
-                "guessing.\n\n"
-                "Search results:\n%s\n\nQuestion: %s" % (context, query)
+                "Give the direct answer first with specific details "
+                "(names, dates, times). Cite sources with [1], [2] markers. "
+                "If the results do not contain the answer, say so plainly "
+                "instead of guessing.\n\n"
+                "Search results:\n%s\n\nQuestion: %s"
+                % (today, context, query)
             ),
         },
     ]

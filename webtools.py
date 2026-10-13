@@ -24,7 +24,10 @@ class WebError(Exception):
 
 
 def _clean_html(text):
-    text = re.sub(r"<[^>]+>", "", text)
+    text = re.sub(r"<script.*?</script>", " ", text, flags=re.S | re.I)
+    text = re.sub(r"<style.*?</style>", " ", text, flags=re.S | re.I)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"\s+", " ", text)
     return unescape(text).strip()
 
 
@@ -110,3 +113,26 @@ def web_search(query, max_results=5):
     if not results:
         raise WebError("No search results found.")
     return results
+
+
+_USER_AGENT = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+              "AppleWebKit/537.36 (KHTML, like Gecko) "
+              "Chrome/120.0.0.0 Safari/537.36")
+
+
+def web_fetch(url, max_chars=3000):
+    """Fetch a page and return its visible text, truncated.
+
+    Returns an empty string when the page cannot be fetched."""
+    try:
+        if _IMPERSONATE:
+            resp = _http.get(url, headers={"User-Agent": _USER_AGENT},
+                             impersonate=_IMPERSONATE, timeout=15)
+        else:
+            resp = _http.get(url, headers={"User-Agent": _USER_AGENT},
+                             timeout=15)
+    except Exception:
+        return ""
+    if resp.status_code != 200:
+        return ""
+    return _clean_html(resp.text)[:max_chars].strip()
