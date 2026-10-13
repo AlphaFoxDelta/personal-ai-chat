@@ -26,6 +26,18 @@ openai_compatible:
   api_key: ""
   model: "gpt-4o-mini"
 
+# Subagents for the /api/subagents endpoint: background workers that each
+# get their own system prompt. A task is fanned out to all of them in
+# parallel, then the main model merges their answers into one reply.
+# Add, remove, or rename these to build your own team.
+subagents:
+  - name: "researcher"
+    system_prompt: "You are a research specialist. Be thorough and factual, key points first."
+  - name: "coder"
+    system_prompt: "You are a senior Python developer. Write clean, working code with brief explanations."
+  - name: "reviewer"
+    system_prompt: "You are a careful reviewer. Check answers for mistakes, gaps, and unclear reasoning."
+
 # SQLite file for conversation history (relative to the project folder).
 database: "chat.db"
 

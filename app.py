@@ -14,6 +14,7 @@ import yaml
 from flask import Flask, Response, jsonify, render_template, request
 
 from backends import BackendError, build_backend
+from subagents import run_subagents
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -31,6 +32,7 @@ DEFAULT_CONFIG = {
         "api_key": "",
         "model": "gpt-4o-mini",
     },
+    "subagents": [],
     "database": "chat.db",
     "port": 5000,
 }
@@ -250,6 +252,54 @@ def chat():
             yield "data: [DONE]\n\n"
 
     return Response(generate(), mimetype="text/event-stream")
+
+
+@app.route("/api/subagents", methods=["POST"])
+def subagents():
+    """Fan a task out to subagents in parallel and return merged results.
+
+    Request body: {"task": "...", "agents": [{"name": ..., "system_prompt": ...}],
+                   "synthesize": true, "max_workers": 3}
+    If "agents" is omitted, the presets under "subagents" in config.yaml
+    are used.
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    task = (data.get("task") or "").strip()
+    agents = data.get("agents") or CONFIG.get("subagents") or []
+    synthesize = data.get("synthesize", True)
+    max_workers = data.get("max_workers", 3)
+
+    if not task:
+        return jsonify({"error": "A task is required."}), 400
+    if not agents:
+        return jsonify(
+            {
+                "error": "No subagents configured. Add some under "
+                         "'subagents' in config.yaml."
+            }
+        ), 400
+
+    try:
+        backend = build_backend(CONFIG)
+    except BackendError as exc:
+        return jsonify({"error": str(exc)}), 500
+
+    try:
+        result = run_subagents(
+            backend,
+            task,
+            agents,
+            CONFIG["system_prompt"],
+            synthesize=bool(synthesize),
+            max_workers=int(max_workers),
+        )
+    except BackendError as exc:
+        return jsonify({"error": str(exc)}), 500
+    except Exception:
+        return jsonify(
+            {"error": "Something went wrong running the subagents."}
+        ), 500
+    return jsonify(result)
 
 
 if __name__ == "__main__":
