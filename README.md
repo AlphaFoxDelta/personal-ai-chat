@@ -1,6 +1,6 @@
 # Kitsune
 
-Something I am playing with. Kitsune is my own AI chat app. It runs on my machine, talks to a free local model, and costs nothing to use. I built it because I wanted a chat system I control, with my own branding, and no subscription.
+Something I'm playing with. Kitsune is my own AI chat app. It runs on my machine, talks to a free local model, and costs nothing to use. I built it because I wanted a chat system I control, with my own branding, and no subscription.
 
 ## Why local and free
 
@@ -20,7 +20,7 @@ If Ollama is not running when you send a message, the app tells you plainly in t
 ## What it does
 
 - Chat with streaming responses, so replies appear as they generate.
-- Multiple conversations with a sidebar. Start new ones, switch between them, delete the ones you do not need.
+- Multiple conversations with a sidebar. Start new ones, switch between them, delete the ones you don't need.
 - History saved locally in SQLite, so your chats survive restarts.
 - Branding and persona set in one config file: app name, accent color, and the system prompt that defines how the assistant behaves.
 - Swappable backend: Ollama for free local use, or any OpenAI-compatible API if you add a key later.
@@ -33,7 +33,7 @@ A subagent is a background worker: one model call with its own system prompt, fo
 
 The default roster is a researcher, a coder, and a reviewer, defined under `subagents` in `config.yaml`. Edit that list to build your own team with whatever roles and prompts you want.
 
-There is also a raw endpoint if you want to call it yourself: `POST /api/subagents` with `{"task": "..."}` returns each subagent's answer plus the merged reply.
+There's also a raw endpoint if you want to call it yourself: `POST /api/subagents` with `{"task": "..."}` returns each subagent's answer plus the merged reply.
 
 Everything runs against your configured backend, so on Ollama subagents cost nothing. The tradeoff is speed: they share your machine, so a team run takes longer than a normal reply.
 
