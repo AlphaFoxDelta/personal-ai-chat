@@ -83,6 +83,10 @@ DEFAULT_CONFIG = {
         },
     ],
     "auto_route": True,
+    "google_search": {
+        "api_key": "",
+        "cx": "",
+    },
     "database": "chat.db",
     "port": 5000,
 }
@@ -191,6 +195,22 @@ def apply_env_overrides(config):
 
 
 CONFIG = apply_env_overrides(CONFIG)
+
+
+def apply_config_secrets_to_env(config):
+    """Let config.yaml supply the Google search keys for local use.
+
+    Environment variables still win when both are set.
+    """
+    google = config.get("google_search") or {}
+    if google.get("api_key") and not os.environ.get("GOOGLE_API_KEY"):
+        os.environ["GOOGLE_API_KEY"] = str(google["api_key"])
+    if google.get("cx") and not os.environ.get("GOOGLE_CX"):
+        os.environ["GOOGLE_CX"] = str(google["cx"])
+    return config
+
+
+CONFIG = apply_config_secrets_to_env(CONFIG)
 CONFIG["system_prompt"] = resolve_system_prompt(CONFIG)
 app = Flask(__name__)
 

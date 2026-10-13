@@ -62,6 +62,15 @@ subagents:
 # (the /web and /team commands still work as explicit overrides).
 auto_route: true
 
+# Google Custom Search for /web (optional). When both are set, the app
+# searches Google instead of DuckDuckGo. Free 100 queries/day.
+# config.yaml is gitignored, so your key stays on your machine.
+# (On a host like Render, set GOOGLE_API_KEY and GOOGLE_CX env vars instead;
+# env vars win when both are set.)
+google_search:
+  api_key: ""
+  cx: ""
+
 # SQLite file for conversation history (relative to the project folder).
 database: "chat.db"
 
