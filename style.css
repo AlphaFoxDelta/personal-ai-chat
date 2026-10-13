@@ -221,6 +221,23 @@ body {
   border: 1px solid var(--border);
 }
 
+/* Avatar pulses gently while its message is streaming: a "thinking" indicator. */
+.message.assistant.streaming .msg-avatar {
+  animation: avatar-thinking 1.2s ease-in-out infinite;
+  border-color: var(--accent);
+}
+
+@keyframes avatar-thinking {
+  0%, 100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  50% {
+    transform: scale(1.1);
+    filter: brightness(1.3);
+  }
+}
+
 .messages {
   flex: 1;
   overflow-y: auto;
