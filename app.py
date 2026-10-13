@@ -15,6 +15,7 @@ from flask import Flask, Response, jsonify, render_template, request
 
 from backends import BackendError, build_backend
 from subagents import run_subagents
+from webtools import WebError, web_search
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -249,6 +250,105 @@ def chat():
                 conn.commit()
                 conn.close()
         finally:
+            yield "data: [DONE]\n\n"
+
+    return Response(generate(), mimetype="text/event-stream")
+
+
+@app.route("/api/web", methods=["POST"])
+def web():
+    """Answer a question using live web search results.
+
+    Request body: {"query": "...", "conversation_id": 123}
+    Searches DuckDuckGo (free, no key), then asks the model to answer
+    using the results. Streams the answer like /api/chat and saves the
+    exchange to the conversation when conversation_id is given.
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    query = (data.get("query") or "").strip()
+    conversation_id = data.get("conversation_id")
+
+    if not query:
+        return jsonify({"error": "A query is required."}), 400
+
+    conn = None
+    is_first = False
+    if conversation_id:
+        conn = get_db()
+        if not conversation_exists(conn, conversation_id):
+            conn.close()
+            return jsonify({"error": "Conversation not found."}), 404
+        history_rows = conn.execute(
+            "SELECT id FROM messages WHERE conversation_id = ?",
+            (conversation_id,),
+        ).fetchall()
+        is_first = len(history_rows) == 0
+
+    try:
+        results = web_search(query)
+    except WebError as exc:
+        if conn:
+            conn.close()
+        return jsonify({"error": str(exc)}), 500
+
+    context = "\n\n".join(
+        "[%d] %s\n%s\n%s" % (i + 1, r["title"], r["url"], r["snippet"])
+        for i, r in enumerate(results)
+    )
+    messages = [
+        {"role": "system", "content": CONFIG["system_prompt"]},
+        {
+            "role": "user",
+            "content": (
+                "Answer the question below using these web search results. "
+                "If the results do not cover it, say so plainly instead of "
+                "guessing.\n\n"
+                "Search results:\n%s\n\nQuestion: %s" % (context, query)
+            ),
+        },
+    ]
+
+    try:
+        backend = build_backend(CONFIG)
+    except BackendError as exc:
+        if conn:
+            conn.close()
+        return jsonify({"error": str(exc)}), 500
+
+    def generate():
+        parts = []
+        try:
+            for chunk in backend.stream(messages):
+                parts.append(chunk)
+                yield "data: %s\n\n" % json.dumps({"delta": chunk})
+        except BackendError as exc:
+            yield "data: %s\n\n" % json.dumps({"error": str(exc)})
+        except Exception:
+            yield "data: %s\n\n" % json.dumps(
+                {"error": "Something went wrong while generating a response."}
+            )
+        else:
+            text = "".join(parts)
+            if conn and text:
+                conn.execute(
+                    "INSERT INTO messages (conversation_id, role, content, created_at) "
+                    "VALUES (?, ?, ?, ?)",
+                    (conversation_id, "user", query, utcnow()),
+                )
+                if is_first:
+                    conn.execute(
+                        "UPDATE conversations SET title = ? WHERE id = ?",
+                        (make_title(query), conversation_id),
+                    )
+                conn.execute(
+                    "INSERT INTO messages (conversation_id, role, content, created_at) "
+                    "VALUES (?, ?, ?, ?)",
+                    (conversation_id, "assistant", text, utcnow()),
+                )
+                conn.commit()
+        finally:
+            if conn:
+                conn.close()
             yield "data: [DONE]\n\n"
 
     return Response(generate(), mimetype="text/event-stream")

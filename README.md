@@ -25,6 +25,7 @@ If Ollama is not running when you send a message, the app tells you plainly in t
 - Branding and persona set in one config file: app name, accent color, and the system prompt that defines how the assistant behaves.
 - Swappable backend: Ollama for free local use, or any OpenAI-compatible API if you add a key later.
 - Subagents: type `/team <task>` in the chat box and a team of background workers tackles it in parallel, then merges their answers into one reply. Still free, still local.
+- Web search: type `/web <question>` and Kitsune searches DuckDuckGo (free, no key) and answers using the results.
 
 ## Subagents
 
@@ -35,6 +36,12 @@ The default roster is a researcher, a coder, and a reviewer, defined under `suba
 There is also a raw endpoint if you want to call it yourself: `POST /api/subagents` with `{"task": "..."}` returns each subagent's answer plus the merged reply.
 
 Everything runs against your configured backend, so on Ollama subagents cost nothing. The tradeoff is speed: they share your machine, so a team run takes longer than a normal reply.
+
+## Web search
+
+The local model has no internet of its own, so Kitsune brings the internet to it. Type `/web <question>` in the chat box and the app searches DuckDuckGo, free with no API key, then asks the model to answer using the results. If the results do not cover the question, it says so instead of guessing.
+
+This is search-grounded answers, not full browsing: fast, free, and good enough for "what is the latest on X" questions.
 
 ## Config options
 
@@ -55,6 +62,7 @@ Everything lives in `config.yaml` (copy it from `config.example.yaml`). The real
 - `app.py`: Flask server, API routes, SQLite history, streaming responses.
 - `backends.py`: model backends. Ollama and OpenAI-compatible, with clean error handling.
 - `subagents.py`: parallel background workers plus the merge step.
+- `webtools.py`: DuckDuckGo web search, no API key needed.
 - `config.yaml`: your local settings (gitignored).
 - `config.example.yaml`: template to copy from.
 - `requirements.txt`: Python dependencies.

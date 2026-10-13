@@ -1,5 +1,5 @@
-// Personal AI chat frontend: sidebar conversations, streaming chat,
-// plus the /team command which fans a task out to subagents.
+// Kitsune frontend: sidebar conversations, streaming chat,
+// the /team command (subagents), and the /web command (web search).
 
 let currentConversationId = null;
 let isStreaming = false;
@@ -105,6 +105,58 @@ async function selectConversation(id) {
   await loadConversations();
 }
 
+// POST to a streaming (SSE) endpoint and stream the reply into bubble.
+// Returns the full text, or throws on error.
+async function streamInto(url, body, bubble) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || ("Request failed: " + res.status));
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let fullText = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let idx;
+    while ((idx = buffer.indexOf("\n\n")) >= 0) {
+      const event = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 2);
+      for (const line of event.split("\n")) {
+        if (!line.startsWith("data:")) continue;
+        const payload = line.slice(5).trim();
+        if (payload === "[DONE]") break;
+        let obj;
+        try {
+          obj = JSON.parse(payload);
+        } catch (e) {
+          continue;
+        }
+        if (obj.delta) {
+          fullText += obj.delta;
+          bubble.textContent = fullText;
+          messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+        if (obj.error) {
+          throw new Error(obj.error);
+        }
+      }
+    }
+  }
+
+  return fullText;
+}
+
 async function sendMessage(text) {
   clearError();
   addMessage("user", text, false);
@@ -113,55 +165,10 @@ async function sendMessage(text) {
   sendBtn.disabled = true;
 
   try {
-    const res = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        conversation_id: currentConversationId,
-        message: text,
-      }),
+    const fullText = await streamInto("/api/chat", {
+      conversation_id: currentConversationId,
+      message: text,
     });
-
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.error || ("Request failed: " + res.status));
-    }
-
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let fullText = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let idx;
-      while ((idx = buffer.indexOf("\n\n")) >= 0) {
-        const event = buffer.slice(0, idx);
-        buffer = buffer.slice(idx + 2);
-        for (const line of event.split("\n")) {
-          if (!line.startsWith("data:")) continue;
-          const payload = line.slice(5).trim();
-          if (payload === "[DONE]") break;
-          let obj;
-          try {
-            obj = JSON.parse(payload);
-          } catch (e) {
-            continue;
-          }
-          if (obj.delta) {
-            fullText += obj.delta;
-            bubble.textContent = fullText;
-            messagesEl.scrollTop = messagesEl.scrollHeight;
-          }
-          if (obj.error) {
-            throw new Error(obj.error);
-          }
-        }
-      }
-    }
-
     bubble.classList.remove("streaming");
     if (!fullText) {
       bubble.remove();
@@ -169,8 +176,6 @@ async function sendMessage(text) {
     // Titles are set from the first message, refresh the sidebar.
     await loadConversations();
   } catch (e) {
-    bubble.classList.remove("streaming");
-    bubble.textContent = "";
     bubble.remove();
     showError(e.message);
   } finally {
@@ -217,19 +222,54 @@ async function runSubagents(task) {
   }
 }
 
+async function runWebSearch(query) {
+  clearError();
+  addMessage("user", "/web " + query, false);
+  const bubble = addMessage("assistant", "Searching the web...", true);
+  isStreaming = true;
+  sendBtn.disabled = true;
+
+  try {
+    const fullText = await streamInto("/api/web", {
+      query: query,
+      conversation_id: currentConversationId,
+    });
+    bubble.classList.remove("streaming");
+    if (!fullText) {
+      bubble.remove();
+    }
+    await loadConversations();
+  } catch (e) {
+    bubble.remove();
+    showError(e.message);
+  } finally {
+    isStreaming = false;
+    sendBtn.disabled = false;
+    chatInput.focus();
+  }
+}
+
 chatForm.addEventListener("submit", (e) => {
   e.preventDefault();
   if (isStreaming) return;
   const text = chatInput.value.trim();
   if (!text) return;
   chatInput.value = "";
-  if (text.toLowerCase().startsWith("/team ")) {
+  const lower = text.toLowerCase();
+  if (lower.startsWith("/team ")) {
     const task = text.slice(6).trim();
     if (!task) {
       showError("Usage: /team <task>");
       return;
     }
     runSubagents(task);
+  } else if (lower.startsWith("/web ")) {
+    const query = text.slice(5).trim();
+    if (!query) {
+      showError("Usage: /web <question>");
+      return;
+    }
+    runWebSearch(query);
   } else {
     sendMessage(text);
   }
