@@ -344,6 +344,7 @@ def linkify_citations(answer, results):
 
     The model sometimes mimics the [1], [2] labels from the search context
     instead of writing inline links. This makes those markers clickable.
+    Handles both [N] and the CJK-bracket variant [N] some models emit.
     Markers with no matching result are removed.
     """
     def repl(match):
@@ -352,7 +353,8 @@ def linkify_citations(answer, results):
             title = results[idx]["title"].replace("[", "").replace("]", "")
             return "[%s](%s)" % (title, results[idx]["url"])
         return ""
-    return re.sub(r"\[(\d+)\]", repl, answer)
+    answer = re.sub(r"\[(\d+)\]", repl, answer)
+    return re.sub(r"\u3010(\d+)\u3011", repl, answer)
 
 
 def build_web_messages(backend, query, system_prompt, today, history=None):
