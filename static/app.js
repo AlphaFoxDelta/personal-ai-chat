@@ -72,11 +72,13 @@ function avatarUrl(id) {
 }
 
 function applyAvatar(id) {
-  document.getElementById("avatar-current").src = avatarUrl(id);
+  const url = avatarUrl(id);
+  document.getElementById("profile-avatar").src = url;
+  document.getElementById("panel-toggle-avatar").src = url;
   document.querySelectorAll(".msg-avatar").forEach(function (img) {
-    img.src = avatarUrl(id);
+    img.src = url;
   });
-  document.querySelectorAll(".avatar-option").forEach(function (btn) {
+  document.querySelectorAll(".profile-avatar-option").forEach(function (btn) {
     btn.classList.toggle("selected", btn.dataset.avatar === id);
   });
 }
@@ -86,21 +88,27 @@ function setAvatar(id) {
   applyAvatar(id);
 }
 
-function buildAvatarMenu() {
-  const menu = document.getElementById("avatar-menu");
-  menu.innerHTML = "";
+function buildProfileGrid() {
+  const grid = document.getElementById("profile-avatar-grid");
+  grid.innerHTML = "";
   AVATARS.forEach(function (a) {
     const btn = document.createElement("button");
-    btn.className = "avatar-option";
+    btn.className = "profile-avatar-option";
     btn.dataset.avatar = a.id;
     btn.innerHTML = '<img src="' + avatarUrl(a.id) + '" alt="' + a.name + '">' +
       "<span>" + a.name + "</span>";
     btn.addEventListener("click", function () {
       setAvatar(a.id);
-      menu.classList.add("hidden");
     });
-    menu.appendChild(btn);
+    grid.appendChild(btn);
   });
+}
+
+const PANEL_KEY = "kitsune_panel";
+
+function setPanelOpen(open) {
+  document.getElementById("profile-panel").classList.toggle("hidden", !open);
+  localStorage.setItem(PANEL_KEY, open ? "open" : "closed");
 }
 
 function setReactionBadge(div, emoji) {
@@ -148,6 +156,10 @@ async function loadBranding() {
     const cfg = await api("/api/config");
     document.getElementById("app-name").textContent = cfg.app_name;
     document.getElementById("page-title").textContent = cfg.app_name;
+    document.getElementById("profile-name").textContent = cfg.app_name;
+    if (cfg.persona_vibe) {
+      document.getElementById("profile-vibe").textContent = cfg.persona_vibe;
+    }
     document.documentElement.style.setProperty("--accent", cfg.accent_color);
   } catch (e) {
     // Branding is cosmetic, keep defaults on failure.
@@ -476,16 +488,13 @@ newChatBtn.addEventListener("click", () => {
 
 (async function init() {
   await loadBranding();
-  buildAvatarMenu();
+  buildProfileGrid();
   applyAvatar(getAvatarId());
-  document.getElementById("avatar-btn").addEventListener("click", function (e) {
-    e.stopPropagation();
-    document.getElementById("avatar-menu").classList.toggle("hidden");
-  });
-  document.addEventListener("click", function (e) {
-    if (!e.target.closest(".avatar-picker")) {
-      document.getElementById("avatar-menu").classList.add("hidden");
-    }
+  const panelStored = localStorage.getItem(PANEL_KEY);
+  setPanelOpen(panelStored ? panelStored === "open" : window.innerWidth > 1100);
+  document.getElementById("panel-toggle").addEventListener("click", function () {
+    const panel = document.getElementById("profile-panel");
+    setPanelOpen(panel.classList.contains("hidden"));
   });
   const conversations = await api("/api/conversations");
   if (conversations.length === 0) {

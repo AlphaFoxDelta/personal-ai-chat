@@ -16,12 +16,9 @@
     <main class="main">
       <header class="chat-header">
         <h1 id="app-name">My AI</h1>
-        <div class="avatar-picker">
-          <button id="avatar-btn" class="avatar-btn" title="Choose avatar">
-            <img id="avatar-current" src="" alt="Kitsune avatar">
-          </button>
-          <div id="avatar-menu" class="avatar-menu hidden"></div>
-        </div>
+        <button id="panel-toggle" class="panel-toggle" title="Profile">
+          <img id="panel-toggle-avatar" src="" alt="Profile">
+        </button>
       </header>
       <div id="messages" class="messages"></div>
       <div id="error-bar" class="error-bar hidden"></div>
@@ -30,6 +27,17 @@
         <button type="submit" id="send-btn">Send</button>
       </form>
     </main>
+    <aside class="profile-panel" id="profile-panel">
+      <div class="profile-avatar-wrap">
+        <img id="profile-avatar" src="" alt="Kitsune avatar">
+      </div>
+      <h2 id="profile-name">Kitsune</h2>
+      <div class="profile-status"><span class="status-dot"></span>Online</div>
+      <div class="profile-divider"></div>
+      <p class="profile-vibe" id="profile-vibe"></p>
+      <div class="profile-section-label">Avatar</div>
+      <div id="profile-avatar-grid" class="profile-avatar-grid"></div>
+    </aside>
   </div>
   <script src="/static/avatars.js"></script>
   <script src="/static/app.js"></script>

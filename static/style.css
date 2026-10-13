@@ -124,12 +124,8 @@ body {
   font-weight: 600;
 }
 
-/* Avatar picker in the header. */
-.avatar-picker {
-  position: relative;
-}
-
-.avatar-btn {
+/* Small avatar button in the header toggles the profile panel. */
+.panel-toggle {
   background: none;
   border: 2px solid var(--border);
   border-radius: 50%;
@@ -138,71 +134,146 @@ body {
   width: 38px;
   height: 38px;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
-.avatar-btn:hover {
+.panel-toggle:hover {
   border-color: var(--accent);
 }
 
-.avatar-btn img {
+.panel-toggle img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
 }
 
-.avatar-menu {
-  position: absolute;
-  right: 0;
-  top: 46px;
-  z-index: 20;
+/* Right-side profile panel. */
+.profile-panel {
+  width: 280px;
+  flex-shrink: 0;
   background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 8px;
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  border-left: 1px solid var(--border);
+  padding: 36px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow-y: auto;
 }
 
-.avatar-menu.hidden {
+.profile-panel.hidden {
   display: none;
 }
 
-.avatar-option {
-  background: none;
-  border: 2px solid transparent;
-  border-radius: 10px;
-  cursor: pointer;
-  padding: 4px;
+.profile-avatar-wrap img {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid var(--border);
+  display: block;
 }
 
-.avatar-option img {
-  width: 56px;
-  height: 56px;
+.profile-panel h2 {
+  margin: 16px 0 0;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.profile-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 6px #22c55e;
+}
+
+.profile-divider {
+  width: 100%;
+  border-top: 1px solid var(--border);
+  margin: 20px 0;
+}
+
+.profile-vibe {
+  margin: 0 0 4px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+  text-align: center;
+  font-style: italic;
+}
+
+.profile-section-label {
+  margin-top: 16px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  align-self: flex-start;
+}
+
+.profile-avatar-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  width: 100%;
+  margin-top: 10px;
+}
+
+.profile-avatar-option {
+  background: none;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  cursor: pointer;
+  padding: 6px;
+}
+
+.profile-avatar-option img {
+  width: 100%;
+  aspect-ratio: 1;
   border-radius: 50%;
   object-fit: cover;
   display: block;
 }
 
-.avatar-option span {
+.profile-avatar-option span {
   font-size: 11px;
   color: var(--muted);
   display: block;
-  margin-top: 4px;
+  margin-top: 6px;
+  text-align: center;
 }
 
-.avatar-option:hover {
+.profile-avatar-option:hover {
   border-color: var(--border);
 }
 
-.avatar-option.selected {
+.profile-avatar-option.selected {
   border-color: var(--accent);
 }
 
-.avatar-option.selected span {
+.profile-avatar-option.selected span {
   color: var(--text);
+}
+
+@media (max-width: 1100px) {
+  .profile-panel {
+    position: fixed;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 50;
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.45);
+  }
 }
 
 /* Avatar shown beside assistant messages. */
