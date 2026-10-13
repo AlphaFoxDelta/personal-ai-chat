@@ -189,7 +189,10 @@ def build_web_messages(backend, query, system_prompt, today):
              "Today is %s.\n\n"
              "Answer the question below using these web search results. "
              "Give the direct answer first with specific details "
-             "(names, dates, times). Cite sources with [1], [2] markers. "
+             "(names, dates, times). When you state a fact from the results, "
+             "link it inline as a markdown link to the source, like "
+             "[ticket prices](https://example.com/tickets). "
+             "Never use numbered citations like [1] or [2]. "
              "If the results do not contain the answer, say so plainly "
              "instead of guessing.\n\n"
              "Search results:\n%s\n\nQuestion: %s" % (today, context, query)
