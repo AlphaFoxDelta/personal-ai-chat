@@ -59,7 +59,29 @@ DEFAULT_CONFIG = {
         "api_key": "",
         "model": "gpt-4o-mini",
     },
-    "subagents": [],
+    "subagents": [
+        {
+            "name": "researcher",
+            "system_prompt": (
+                "You are a research specialist. Be thorough and factual, "
+                "key points first."
+            ),
+        },
+        {
+            "name": "coder",
+            "system_prompt": (
+                "You are a senior Python developer. Write clean, working "
+                "code with brief explanations."
+            ),
+        },
+        {
+            "name": "reviewer",
+            "system_prompt": (
+                "You are a careful reviewer. Check answers for mistakes, "
+                "gaps, and unclear reasoning."
+            ),
+        },
+    ],
     "auto_route": True,
     "database": "chat.db",
     "port": 5000,
