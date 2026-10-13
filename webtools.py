@@ -138,16 +138,14 @@ def web_fetch(url, max_chars=3000):
     return _clean_html(resp.text)[:max_chars].strip()
 
 
-def build_web_messages(backend, query, system_prompt, today):
-    """Rewrite the query, search the web, read the top pages, and return
-    the chat messages that get the model to answer from the results.
+def search_task_context(backend, task, today, max_results=5, fetch_pages=3):
+    """Search the web for a task and return formatted context text.
 
-    Raises WebError when the search fails.
+    Rewrites the task into a sharp query, searches DuckDuckGo, and reads
+    the top pages. Returns an empty string when the search fails, so
+    callers can proceed without web context.
     """
-    # Rewrite the question into a sharp search query first. A conversational
-    # question makes a bad search query, so resolve relative dates and strip
-    # the chit-chat before hitting DuckDuckGo.
-    search_query = query
+    search_query = task
     try:
         rewrite_messages = [
             {"role": "system",
@@ -158,7 +156,7 @@ def build_web_messages(backend, query, system_prompt, today):
                  "search query (under 12 words). Resolve relative dates like "
                  "'next week' or 'tonight' into actual dates. "
                  "Output only the query, nothing else.\n\nQuestion: %s"
-                 % (today, query)
+                 % (today, task)
              )},
         ]
         rewritten = "".join(backend.stream(rewrite_messages)).strip().strip('"')
@@ -167,20 +165,34 @@ def build_web_messages(backend, query, system_prompt, today):
     except Exception:
         pass
 
-    results = web_search(search_query)
+    try:
+        results = web_search(search_query, max_results=max_results)
+    except WebError:
+        return ""
 
     context_parts = [
         "[%d] %s\n%s\n%s" % (i + 1, r["title"], r["url"], r["snippet"])
         for i, r in enumerate(results)
     ]
     # Read the top pages so the model works from real content, not snippets.
-    for r in results[:3]:
+    for r in results[:fetch_pages]:
         page_text = web_fetch(r["url"])
         if page_text:
             context_parts.append(
                 "Page content from %s:\n%s" % (r["url"], page_text)
             )
-    context = "\n\n".join(context_parts)
+    return "\n\n".join(context_parts)
+
+
+def build_web_messages(backend, query, system_prompt, today):
+    """Rewrite the query, search the web, read the top pages, and return
+    the chat messages that get the model to answer from the results.
+
+    Raises WebError when the search fails.
+    """
+    context = search_task_context(backend, query, today)
+    if not context:
+        raise WebError("No search results found.")
 
     return [
         {"role": "system", "content": system_prompt},

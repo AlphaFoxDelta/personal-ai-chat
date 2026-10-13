@@ -26,11 +26,11 @@ If Ollama is not running when you send a message, the app tells you plainly in t
 - Swappable backend: Ollama for free local use, or any OpenAI-compatible API if you add a key later.
 - Subagents: type `/team <task>` in the chat box and a team of background workers tackles it in parallel, then merges their answers into one reply. Still free, still local.
 - Web search: type `/web <question>` and Kitsune searches DuckDuckGo (free, no key) and answers using the results.
-- Smart routing: just ask. The app figures out whether your message needs a web search, the subagent team, or a normal reply. No commands needed.
+- Smart routing: just ask. The app figures out whether your message needs a web search, the subagent team, or a normal reply. No commands needed. Web answers come back with clickable source links.
 
 ## Subagents
 
-A subagent is a background worker: one model call with its own system prompt, focused on a slice of a bigger task. When you send `/team <task>`, the task is fanned out to every subagent on the roster at once. They each answer independently, then the main model merges their answers into one reply. If one subagent fails, the rest still come through.
+A subagent is a background worker: one model call with its own system prompt, focused on a slice of a bigger task. When you send `/team <task>`, the task is fanned out to every subagent on the roster at once. They each answer independently (every subagent gets live web search results as background), then the main model merges their answers into one clean reply. If one subagent fails, the rest still come through.
 
 The default roster is a researcher, a coder, and a reviewer, defined under `subagents` in `config.yaml`. Edit that list to build your own team with whatever roles and prompts you want.
 

@@ -15,7 +15,7 @@ from flask import Flask, Response, jsonify, render_template, request
 
 from backends import BackendError, build_backend
 from subagents import run_subagents
-from webtools import WebError, build_web_messages, web_fetch, web_search
+from webtools import WebError, build_web_messages, search_task_context, web_fetch, web_search
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -264,8 +264,11 @@ def classify_intent(backend, query, history):
 
 def team_response(backend, conversation_id, task, agents):
     """Run the subagent team and stream the merged answer as SSE."""
+    today = datetime.now().strftime("%A, %B %d, %Y")
+    web_context = search_task_context(backend, task, today)
     try:
-        result = run_subagents(backend, task, agents, CONFIG["system_prompt"])
+        result = run_subagents(backend, task, agents, CONFIG["system_prompt"],
+                               web_context=web_context)
     except BackendError as exc:
         return jsonify({"error": str(exc)}), 500
     except Exception:
@@ -522,6 +525,8 @@ def subagents():
             conn.close()
         return jsonify({"error": str(exc)}), 500
 
+    today = datetime.now().strftime("%A, %B %d, %Y")
+    web_context = search_task_context(backend, task, today)
     try:
         result = run_subagents(
             backend,
@@ -530,6 +535,7 @@ def subagents():
             CONFIG["system_prompt"],
             synthesize=bool(synthesize),
             max_workers=int(max_workers),
+            web_context=web_context,
         )
     except BackendError as exc:
         if conn:

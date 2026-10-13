@@ -16,21 +16,28 @@ import concurrent.futures
 from backends import BackendError
 
 
-def ask(backend, system_prompt, task):
+def ask(backend, system_prompt, task, web_context=""):
     """Run one subagent to completion and return its full reply text."""
+    user_content = task
+    if web_context:
+        user_content = (
+            "Use these web search results as background where relevant:\n\n"
+            "%s\n\nTask: %s" % (web_context, task)
+        )
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": task},
+        {"role": "user", "content": user_content},
     ]
     return "".join(backend.stream(messages)).strip()
 
 
 def run_subagents(backend, task, agents, system_prompt, synthesize=True,
-                  max_workers=3):
+                  max_workers=3, web_context=""):
     """Fan a task out to subagents in parallel and return their results.
 
     agents is a list of {"name": ..., "system_prompt": ...} dicts.
     system_prompt is the main assistant persona, used for the merge step.
+    web_context is shared web search background handed to every subagent.
 
     Returns {"results": [...], "synthesis": str or None}. Each result is
     {"name": ..., "output": ...} or {"name": ..., "error": ...} so one
@@ -46,7 +53,8 @@ def run_subagents(backend, task, agents, system_prompt, synthesize=True,
         name = agent.get("name") or "subagent"
         prompt = agent.get("system_prompt") or ""
         try:
-            return {"name": name, "output": ask(backend, prompt, task)}
+            return {"name": name,
+                    "output": ask(backend, prompt, task, web_context)}
         except BackendError as exc:
             return {"name": name, "error": str(exc)}
         except Exception:
