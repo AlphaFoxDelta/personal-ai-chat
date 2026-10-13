@@ -255,7 +255,7 @@ _USER_AGENT = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
               "Chrome/120.0.0.0 Safari/537.36")
 
 
-def web_fetch(url, max_chars=3000):
+def web_fetch(url, max_chars=5000):
     """Fetch a page and return its visible text, truncated.
 
     Returns an empty string when the page cannot be fetched."""
@@ -383,6 +383,10 @@ def build_web_messages(backend, query, system_prompt, today, history=None):
              "link it inline as a markdown link to the source, like "
              "[ticket prices](https://example.com/tickets). "
              "Never use numbered citations like [1] or [2]. "
+             "When the question asks for a list, schedule, standings, or "
+             "anything with multiple items, include EVERY item from the "
+             "results. Never trail off with 'and others', 'more not "
+             "specified', or any other summary shortcut. "
              "If the results do not contain the answer, say so plainly "
              "instead of guessing.\n\n"
              "Search results:\n%s\n\nQuestion: %s" % (today, context, query)
