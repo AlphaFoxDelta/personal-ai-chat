@@ -71,10 +71,16 @@ function avatarUrl(id) {
   return AVATAR_DATA[id] || AVATAR_DATA["fox-ember"];
 }
 
+function avatarName(id) {
+  const a = AVATARS.find(function (x) { return x.id === id; });
+  return a ? a.name : "Ember";
+}
+
 function applyAvatar(id) {
   const url = avatarUrl(id);
   document.getElementById("profile-avatar").src = url;
   document.getElementById("panel-toggle-avatar").src = url;
+  document.getElementById("avatar-current-name").textContent = avatarName(id);
   document.querySelectorAll(".msg-avatar").forEach(function (img) {
     img.src = url;
   });
@@ -83,9 +89,18 @@ function applyAvatar(id) {
   });
 }
 
+const AVATAR_GRID_KEY = "kitsune_avatar_grid";
+
+function setAvatarGridOpen(open) {
+  document.getElementById("profile-avatar-grid").classList.toggle("hidden", !open);
+  document.getElementById("avatar-chevron").classList.toggle("collapsed", !open);
+  localStorage.setItem(AVATAR_GRID_KEY, open ? "open" : "closed");
+}
+
 function setAvatar(id) {
   localStorage.setItem(AVATAR_KEY, id);
   applyAvatar(id);
+  setAvatarGridOpen(false); // The selection goes away once picked.
 }
 
 function buildProfileGrid() {
@@ -109,6 +124,64 @@ const PANEL_KEY = "kitsune_panel";
 function setPanelOpen(open) {
   document.getElementById("profile-panel").classList.toggle("hidden", !open);
   localStorage.setItem(PANEL_KEY, open ? "open" : "closed");
+}
+
+// Activity feed: what you've done in the app, grouped by day.
+const ACTIVITY_ICONS = { chat: "\uD83D\uDCAC", web: "\uD83D\uDD0D", team: "\uD83D\uDC65" };
+const ACTIVITY_KINDS = { chat: "Chat", web: "Web search", team: "Team run" };
+
+function activityDayLabel(iso) {
+  const d = new Date(iso);
+  const now = new Date();
+  const startOf = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate());
+  const days = Math.round((startOf(now) - startOf(d)) / 86400000);
+  if (days <= 0) return "Today";
+  if (days === 1) return "Yesterday";
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function activityTime(iso) {
+  return new Date(iso).toLocaleTimeString(undefined,
+    { hour: "numeric", minute: "2-digit" });
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function renderActivity(items) {
+  const feed = document.getElementById("activity-feed");
+  if (!items.length) {
+    feed.innerHTML = '<div class="activity-empty">Nothing yet.<br>Start chatting.</div>';
+    return;
+  }
+  let html = "";
+  let lastDay = null;
+  items.forEach(function (it) {
+    const day = activityDayLabel(it.created_at);
+    if (day !== lastDay) {
+      html += '<div class="activity-day">' + day + "</div>";
+      lastDay = day;
+    }
+    const icon = ACTIVITY_ICONS[it.kind] || "\u2728";
+    const kind = ACTIVITY_KINDS[it.kind] || it.kind;
+    html += '<div class="activity-item">' +
+      '<div class="activity-icon">' + icon + "</div>" +
+      '<div class="activity-text">' +
+      '<div class="activity-label">' + escapeHtml(it.label) + "</div>" +
+      '<div class="activity-detail">' + escapeHtml(kind) +
+      " · " + activityTime(it.created_at) + "</div>" +
+      "</div></div>";
+  });
+  feed.innerHTML = html;
+}
+
+async function loadActivity() {
+  try {
+    renderActivity(await api("/api/activity"));
+  } catch (e) {
+    // Activity is a nice-to-have; never break the page over it.
+  }
 }
 
 function setReactionBadge(div, emoji) {
@@ -306,6 +379,7 @@ async function sendMessage(text) {
     }
     // Titles are set from the first message, refresh the sidebar.
     await loadConversations();
+    loadActivity();
   } catch (e) {
     bubble.remove();
     showError(e.message);
@@ -344,6 +418,7 @@ async function runSubagents(task) {
     }
     bubble.classList.remove("streaming");
     await loadConversations();
+    loadActivity();
   } catch (e) {
     bubble.remove();
     showError(e.message);
@@ -382,6 +457,7 @@ async function runWebSearch(query) {
       }
     }
     await loadConversations();
+    loadActivity();
   } catch (e) {
     bubble.remove();
     showError(e.message);
@@ -496,6 +572,13 @@ newChatBtn.addEventListener("click", () => {
     const panel = document.getElementById("profile-panel");
     setPanelOpen(panel.classList.contains("hidden"));
   });
+  const gridStored = localStorage.getItem(AVATAR_GRID_KEY);
+  setAvatarGridOpen(gridStored ? gridStored === "open" : true);
+  document.getElementById("avatar-section-toggle").addEventListener("click", function () {
+    const grid = document.getElementById("profile-avatar-grid");
+    setAvatarGridOpen(grid.classList.contains("hidden"));
+  });
+  loadActivity();
   const conversations = await api("/api/conversations");
   if (conversations.length === 0) {
     await createConversation();

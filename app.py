@@ -256,8 +256,32 @@ def init_db():
         conn.execute(
             "ALTER TABLE messages ADD COLUMN reactions TEXT NOT NULL DEFAULT ''"
         )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS activity (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL,
+            label TEXT NOT NULL,
+            detail TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL
+        )"""
+    )
     conn.commit()
     conn.close()
+
+
+def log_activity(kind, label, detail=""):
+    """Record a user-visible event for the activity feed."""
+    try:
+        conn = get_db()
+        conn.execute(
+            "INSERT INTO activity (kind, label, detail, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            (kind, label[:120], detail[:200], utcnow()),
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass  # Activity logging is best-effort; never break the request.
 
 
 def utcnow():
@@ -292,6 +316,18 @@ def api_config():
     )
 
 
+@app.route("/api/activity")
+def api_activity():
+    """Recent user-visible activity for the profile panel feed."""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT kind, label, detail, created_at FROM activity "
+        "ORDER BY id DESC LIMIT 50"
+    ).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
 @app.route("/api/conversations", methods=["GET"])
 def list_conversations():
     conn = get_db()
@@ -313,6 +349,7 @@ def create_conversation():
     conn.commit()
     conversation_id = cur.lastrowid
     conn.close()
+    log_activity("chat", "New chat started")
     return jsonify({"id": conversation_id, "title": "New chat"}), 201
 
 
@@ -568,6 +605,7 @@ def chat():
 
     if intent == "web":
         today = datetime.now().strftime("%A, %B %d, %Y")
+        log_activity("web", message, "Web search")
         try:
             messages, results = build_web_messages(
                 backend, message, CONFIG["system_prompt"], today,
@@ -584,6 +622,7 @@ def chat():
     elif intent == "team":
         agents = CONFIG.get("subagents") or []
         if agents:
+            log_activity("team", message, "Team run")
             return team_response(
                 backend, conversation_id, message, agents, user_message_id
             )
@@ -637,6 +676,8 @@ def web():
 
     if not query:
         return jsonify({"error": "A query is required."}), 400
+
+    log_activity("web", query, "Web search")
 
     history = []
     is_first = False
@@ -694,6 +735,7 @@ def subagents():
 
     if not task:
         return jsonify({"error": "A task is required."}), 400
+    log_activity("team", task, "Team run")
     if not agents:
         return jsonify(
             {

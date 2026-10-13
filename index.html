@@ -33,10 +33,21 @@
       </div>
       <h2 id="profile-name">Kitsune</h2>
       <div class="profile-status"><span class="status-dot"></span>Online</div>
-      <div class="profile-divider"></div>
       <p class="profile-vibe" id="profile-vibe"></p>
-      <div class="profile-section-label">Avatar</div>
-      <div id="profile-avatar-grid" class="profile-avatar-grid"></div>
+      <div class="profile-divider"></div>
+      <div class="profile-section">
+        <button class="profile-section-header" id="avatar-section-toggle">
+          <span>Avatar · <span id="avatar-current-name">Ember</span></span>
+          <span class="section-chevron" id="avatar-chevron">›</span>
+        </button>
+        <div id="profile-avatar-grid" class="profile-avatar-grid"></div>
+      </div>
+      <div class="profile-section activity-section">
+        <div class="profile-section-header static">
+          <span>Activity</span>
+        </div>
+        <div id="activity-feed" class="activity-feed"></div>
+      </div>
     </aside>
   </div>
   <script src="/static/avatars.js"></script>
