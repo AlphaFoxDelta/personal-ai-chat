@@ -4,6 +4,7 @@ The local model has no internet of its own, so the app searches the web
 itself and hands the results to the model with the question.
 """
 
+import os
 import re
 import time
 from html import unescape
@@ -79,11 +80,70 @@ def _fetch_results(query):
     return None
 
 
+def google_search(query, max_results=5):
+    """Search via the Google Custom Search JSON API.
+
+    Needs GOOGLE_API_KEY and GOOGLE_CX in the environment. Free tier is
+    100 queries/day. Unlike scraping, this works from any network.
+    """
+    api_key = os.environ.get("GOOGLE_API_KEY", "").strip()
+    cx = os.environ.get("GOOGLE_CX", "").strip()
+    if not api_key or not cx:
+        raise WebError("Google search is not configured.")
+    params = {
+        "key": api_key,
+        "cx": cx,
+        "q": query,
+        "num": max(1, min(int(max_results), 10)),
+    }
+    try:
+        resp = _http.get(
+            "https://www.googleapis.com/customsearch/v1",
+            params=params, timeout=20,
+        )
+    except Exception as exc:
+        raise WebError("Google search failed: %s" % exc)
+    if resp.status_code != 200:
+        raise WebError(
+            "Google search returned HTTP %s." % resp.status_code
+        )
+    try:
+        data = resp.json()
+    except Exception:
+        raise WebError("Google search returned unreadable data.")
+    results = []
+    for item in (data.get("items") or [])[:max_results]:
+        results.append(
+            {
+                "title": item.get("title", ""),
+                "url": item.get("link", ""),
+                "snippet": item.get("snippet", ""),
+            }
+        )
+    if not results:
+        raise WebError("No search results found.")
+    return results
+
+
+def _search_provider():
+    """Use Google when its credentials are set, else DuckDuckGo."""
+    if os.environ.get("GOOGLE_API_KEY", "").strip() and os.environ.get(
+        "GOOGLE_CX", ""
+    ).strip():
+        return "google"
+    return "duckduckgo"
+
+
 def web_search(query, max_results=5):
-    """Search DuckDuckGo and return a list of {title, url, snippet} dicts."""
+    """Search the web and return a list of {title, url, snippet} dicts.
+
+    Uses Google Custom Search when GOOGLE_API_KEY/GOOGLE_CX are set,
+    otherwise DuckDuckGo (free, no key)."""
     query = (query or "").strip()
     if not query:
         raise WebError("A search query is required.")
+    if _search_provider() == "google":
+        return google_search(query, max_results)
 
     html = _fetch_results(query)
 
