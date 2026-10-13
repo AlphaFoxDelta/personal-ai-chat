@@ -14,6 +14,7 @@ sluggish on most machines.
 import concurrent.futures
 
 from backends import BackendError
+from webtools import polish_text
 
 
 def ask(backend, system_prompt, task, web_context=""):
@@ -86,6 +87,8 @@ def run_subagents(backend, task, agents, system_prompt, synthesize=True,
                 ),
             },
         ]
-        synthesis = "".join(backend.stream(synthesis_messages)).strip()
+        synthesis = polish_text(
+            "".join(backend.stream(synthesis_messages)).strip()
+        )
 
     return {"results": results, "synthesis": synthesis}

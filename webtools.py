@@ -357,6 +357,37 @@ def linkify_citations(answer, results):
     return re.sub(r"\u3010(\d+)\u3011", repl, answer)
 
 
+_POLISH_REPLACEMENTS = (
+    ("\u2011", "-"),  # non-breaking hyphen
+    ("\u2012", "-"),  # figure dash
+    ("\u2013", "-"),  # en dash
+    ("\u2014", "-"),  # em dash
+    ("\u202f", " "),  # narrow no-break space
+    ("\u00a0", " "),  # no-break space
+    ("\u2009", " "),  # thin space
+    ("\u2018", "'"),  # left single quotation mark
+    ("\u2019", "'"),  # right single quotation mark
+    ("\u201c", '"'),  # left double quotation mark
+    ("\u201d", '"'),  # right double quotation mark
+    ("\u2026", "..."),  # horizontal ellipsis
+)
+
+
+def polish_text(text):
+    """Normalize fancy unicode into plain ASCII equivalents.
+
+    Small models emit non-breaking hyphens, em dashes jammed against
+    words, narrow spaces, and curly quotes, which render as cramped or
+    odd-looking text. This makes every reply read clean.
+    Only single-character replacements, so it is safe to apply per
+    streaming chunk.
+    """
+    for fancy, plain in _POLISH_REPLACEMENTS:
+        if fancy in text:
+            text = text.replace(fancy, plain)
+    return text
+
+
 def build_web_messages(backend, query, system_prompt, today, history=None):
     """Rewrite the query, search the web, read the top pages, and return
     the chat messages that get the model to answer from the results.

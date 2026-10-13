@@ -16,6 +16,7 @@ from flask import Flask, Response, jsonify, render_template, request
 from backends import BackendError, build_backend
 from subagents import run_subagents
 from webtools import (WebError, build_web_messages, linkify_citations,
+                      polish_text,
                       search_task_context, search_with_results)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -46,6 +47,7 @@ DEFAULT_CONFIG = {
             "When citing the web, link sources inline as markdown links. "
             "Never use numbered markers like [1] or [2].",
             "If you don't know something, say so plainly instead of bluffing.",
+            "Be conversational, not transactional: react to what the user actually said, engage with it, and ask a follow-up when one comes naturally. Don't just answer and stop.",
             "Playfully prickly on the surface, genuinely caring underneath: classic tsundere energy, acts like helping is a bother but clearly cares. Never actually mean, never angry or cutting, and drop the act the moment things get serious.",
         ],
     },
@@ -469,6 +471,7 @@ def buffered_web_answer(backend, conversation_id, save_user_text, messages,
         ), 500
 
     text = linkify_citations(raw, results) if raw else ""
+    text = polish_text(text)
     assistant_message_id = None
     if conversation_id and text:
         conn = get_db()
@@ -546,7 +549,7 @@ def chat():
     conn.commit()
     conn.close()
 
-    history_dicts = [dict(r) for r in history_rows]
+    history_dicts = [dict(r) for r in history_rows][-20:]
     messages = [{"role": "system", "content": CONFIG["system_prompt"]}]
     messages += history_dicts
     messages.append({"role": "user", "content": message})
@@ -589,6 +592,7 @@ def chat():
         parts = []
         try:
             for chunk in backend.stream(messages):
+                chunk = polish_text(chunk)
                 parts.append(chunk)
                 yield "data: %s\n\n" % json.dumps({"delta": chunk})
         except BackendError as exc:
