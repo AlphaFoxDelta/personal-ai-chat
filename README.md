@@ -1,6 +1,6 @@
-# Personal AI Chat
+# Kitsune
 
-Something I am playing with. This is my own AI chat app. It runs on my machine, talks to a free local model, and costs nothing to use. I built it because I wanted a chat system I control, with my own branding, and no subscription.
+Something I am playing with. Kitsune is my own AI chat app. It runs on my machine, talks to a free local model, and costs nothing to use. I built it because I wanted a chat system I control, with my own branding, and no subscription.
 
 ## Why local and free
 

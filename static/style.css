@@ -1,10 +1,11 @@
 :root {
-  --accent: #4f46e5;
-  --bg: #f7f7f8;
-  --panel: #ffffff;
-  --border: #e5e5e5;
-  --text: #1a1a1a;
-  --muted: #6b7280;
+  color-scheme: dark;
+  --accent: #f97316;
+  --bg: #0e1013;
+  --panel: #16191f;
+  --border: #262b34;
+  --text: #e9ebf0;
+  --muted: #8b93a3;
 }
 
 * {
@@ -91,7 +92,7 @@ body {
 }
 
 .delete-btn:hover {
-  color: #dc2626;
+  color: #f87171;
 }
 
 .sidebar-footer {
@@ -167,9 +168,9 @@ body {
   margin: 0 auto 8px;
   max-width: 860px;
   width: calc(100% - 48px);
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  color: #991b1b;
+  background: #2a1518;
+  border: 1px solid #5b2328;
+  color: #fca5a5;
   padding: 10px 14px;
   border-radius: 8px;
   font-size: 14px;
@@ -195,6 +196,12 @@ body {
   border-radius: 10px;
   font-size: 15px;
   outline: none;
+  background: var(--panel);
+  color: var(--text);
+}
+
+.composer input::placeholder {
+  color: var(--muted);
 }
 
 .composer input:focus {

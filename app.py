@@ -19,8 +19,8 @@ from subagents import run_subagents
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 DEFAULT_CONFIG = {
-    "app_name": "My AI",
-    "accent_color": "#4f46e5",
+    "app_name": "Kitsune",
+    "accent_color": "#f97316",
     "system_prompt": "You are a helpful assistant.",
     "backend": "ollama",
     "ollama": {

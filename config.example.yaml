@@ -2,10 +2,10 @@
 # config.yaml is gitignored. Never commit real API keys.
 
 # Name shown in the header and browser tab.
-app_name: "My AI"
+app_name: "Kitsune"
 
 # Accent color for buttons and highlights (any CSS color).
-accent_color: "#4f46e5"
+accent_color: "#f97316"
 
 # Persona for the assistant. Change this to brand the behavior.
 system_prompt: "You are a helpful assistant."
