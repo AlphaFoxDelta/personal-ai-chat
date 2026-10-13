@@ -9,7 +9,14 @@ import time
 from html import unescape
 from urllib.parse import parse_qs, urlparse
 
-import requests
+try:
+    # Impersonates a real Chrome browser at the TLS level, so
+    # DuckDuckGo's bot filter treats these like normal searches.
+    from curl_cffi import requests as _http
+    _IMPERSONATE = "chrome120"
+except ImportError:
+    import requests as _http
+    _IMPERSONATE = None
 
 
 class WebError(Exception):
@@ -41,18 +48,24 @@ def _fetch_results(query):
         ("POST", "https://html.duckduckgo.com/html/", {"data": {"q": query}}),
         ("GET", "https://html.duckduckgo.com/html/", {"params": {"q": query}}),
     ]
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                      "AppleWebKit/537.36 (KHTML, like Gecko) "
+                      "Chrome/120.0.0.0 Safari/537.36",
+    }
     for method, url, kw in variants:
         for _ in range(2):
             try:
-                resp = requests.request(
-                    method,
-                    url,
-                    headers={"User-Agent": "Mozilla/5.0"},
-                    timeout=20,
-                    **kw
-                )
-            except (requests.exceptions.ConnectionError,
-                    requests.exceptions.Timeout):
+                if _IMPERSONATE:
+                    resp = _http.request(
+                        method, url, headers=headers,
+                        impersonate=_IMPERSONATE, timeout=20, **kw
+                    )
+                else:
+                    resp = _http.request(
+                        method, url, headers=headers, timeout=20, **kw
+                    )
+            except Exception:
                 time.sleep(1)
                 continue
             # DuckDuckGo sometimes answers 202 with a bot-check page
@@ -69,12 +82,7 @@ def web_search(query, max_results=5):
     if not query:
         raise WebError("A search query is required.")
 
-    try:
-        html = _fetch_results(query)
-    except requests.exceptions.ConnectionError:
-        raise WebError(
-            "Could not reach DuckDuckGo. Check your internet connection."
-        )
+    html = _fetch_results(query)
 
     if html is None:
         raise WebError(
