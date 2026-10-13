@@ -83,6 +83,17 @@ Everything lives in `config.yaml` (copy it from `config.example.yaml`). The real
 - Export: download a conversation as text or markdown.
 - Optional auth: a simple login if you ever expose it past localhost.
 
+## Hosting it for free
+
+The app reads settings from environment variables, so it runs on free hosts without changing code. The usual free setup:
+
+1. Put it on Render's free tier: connect this repo, start command `python app.py`.
+2. Point it at a free model API instead of local Ollama. OpenRouter has free models: set `BACKEND` to `openai_compatible`, `OPENAI_COMPATIBLE_BASE_URL` to `https://openrouter.ai/api/v1`, `OPENAI_COMPATIBLE_MODEL` to a `:free` model, and `OPENAI_COMPATIBLE_API_KEY` to your free key.
+
+Supported env vars: `HOST`, `PORT`, `APP_NAME`, `ACCENT_COLOR`, `SYSTEM_PROMPT`, `BACKEND`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_API_KEY`, `OPENAI_COMPATIBLE_MODEL`, `AUTO_ROUTE`.
+
+Two free-tier caveats: the app sleeps when idle and takes ~30 seconds to wake up, and chat history lives in SQLite on temporary disk, so it resets when the instance restarts.
+
 ## License
 
 MIT. Do what you want with it.

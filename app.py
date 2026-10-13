@@ -64,6 +64,46 @@ def load_config():
 
 
 CONFIG = load_config()
+
+
+def apply_env_overrides(config):
+    """Let environment variables override config.yaml.
+
+    This is how hosted platforms pass in settings and secrets without
+    touching files. Local runs are unaffected unless the vars are set.
+    """
+    if os.environ.get("APP_NAME"):
+        config["app_name"] = os.environ["APP_NAME"]
+    if os.environ.get("ACCENT_COLOR"):
+        config["accent_color"] = os.environ["ACCENT_COLOR"]
+    if os.environ.get("SYSTEM_PROMPT"):
+        config["system_prompt"] = os.environ["SYSTEM_PROMPT"]
+    if os.environ.get("BACKEND"):
+        config["backend"] = os.environ["BACKEND"]
+    if os.environ.get("OLLAMA_BASE_URL"):
+        config["ollama"]["base_url"] = os.environ["OLLAMA_BASE_URL"]
+    if os.environ.get("OLLAMA_MODEL"):
+        config["ollama"]["model"] = os.environ["OLLAMA_MODEL"]
+    if os.environ.get("OPENAI_COMPATIBLE_BASE_URL"):
+        config["openai_compatible"]["base_url"] = os.environ[
+            "OPENAI_COMPATIBLE_BASE_URL"
+        ]
+    if os.environ.get("OPENAI_COMPATIBLE_API_KEY"):
+        config["openai_compatible"]["api_key"] = os.environ[
+            "OPENAI_COMPATIBLE_API_KEY"
+        ]
+    if os.environ.get("OPENAI_COMPATIBLE_MODEL"):
+        config["openai_compatible"]["model"] = os.environ[
+            "OPENAI_COMPATIBLE_MODEL"
+        ]
+    if os.environ.get("AUTO_ROUTE"):
+        config["auto_route"] = os.environ["AUTO_ROUTE"].lower() not in (
+            "0", "false", "no", "off",
+        )
+    return config
+
+
+CONFIG = apply_env_overrides(CONFIG)
 app = Flask(__name__)
 
 
@@ -528,4 +568,8 @@ def subagents():
 
 if __name__ == "__main__":
     init_db()
-    app.run(host="127.0.0.1", port=int(CONFIG["port"]), debug=False)
+    app.run(
+        host=os.environ.get("HOST", "127.0.0.1"),
+        port=int(os.environ.get("PORT", CONFIG["port"])),
+        debug=False,
+    )
