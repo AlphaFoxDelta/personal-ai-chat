@@ -5,6 +5,7 @@ itself and hands the results to the model with the question.
 """
 
 import re
+import time
 from html import unescape
 from urllib.parse import parse_qs, urlparse
 
@@ -33,32 +34,59 @@ def _real_url(href):
     return href
 
 
+def _fetch_results(query):
+    """Try the DuckDuckGo endpoints, return raw HTML of the first one
+    that answers with actual results, or None."""
+    variants = [
+        ("POST", "https://html.duckduckgo.com/html/", {"data": {"q": query}}),
+        ("GET", "https://html.duckduckgo.com/html/", {"params": {"q": query}}),
+    ]
+    for method, url, kw in variants:
+        for _ in range(2):
+            try:
+                resp = requests.request(
+                    method,
+                    url,
+                    headers={"User-Agent": "Mozilla/5.0"},
+                    timeout=20,
+                    **kw
+                )
+            except (requests.exceptions.ConnectionError,
+                    requests.exceptions.Timeout):
+                time.sleep(1)
+                continue
+            # DuckDuckGo sometimes answers 202 with a bot-check page
+            # instead of results. Anything without results is a miss.
+            if resp.status_code == 200 and "result__a" in resp.text:
+                return resp.text
+            time.sleep(1)
+    return None
+
+
 def web_search(query, max_results=5):
     """Search DuckDuckGo and return a list of {title, url, snippet} dicts."""
     query = (query or "").strip()
     if not query:
         raise WebError("A search query is required.")
+
     try:
-        resp = requests.post(
-            "https://html.duckduckgo.com/html/",
-            data={"q": query},
-            headers={"User-Agent": "Mozilla/5.0"},
-            timeout=20,
-        )
+        html = _fetch_results(query)
     except requests.exceptions.ConnectionError:
         raise WebError(
             "Could not reach DuckDuckGo. Check your internet connection."
         )
-    except requests.exceptions.Timeout:
-        raise WebError("The web search timed out.")
-    if resp.status_code != 200:
-        raise WebError("DuckDuckGo returned HTTP %s." % resp.status_code)
+
+    if html is None:
+        raise WebError(
+            "DuckDuckGo is not returning results right now. "
+            "Try again in a bit."
+        )
 
     titles = re.findall(
-        r'class="result__a" href="([^"]+)">(.*?)</a>', resp.text, re.S
+        r'class="result__a" href="([^"]+)">(.*?)</a>', html, re.S
     )
     snippets = re.findall(
-        r'result__snippet" href="[^"]+">(.*?)</a>', resp.text, re.S
+        r'result__snippet" href="[^"]+">(.*?)</a>', html, re.S
     )
 
     results = []
