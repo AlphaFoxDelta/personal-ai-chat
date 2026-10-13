@@ -168,7 +168,7 @@ async function sendMessage(text) {
     const fullText = await streamInto("/api/chat", {
       conversation_id: currentConversationId,
       message: text,
-    });
+    }, bubble);
     bubble.classList.remove("streaming");
     if (!fullText) {
       bubble.remove();
@@ -233,7 +233,7 @@ async function runWebSearch(query) {
     const fullText = await streamInto("/api/web", {
       query: query,
       conversation_id: currentConversationId,
-    });
+    }, bubble);
     bubble.classList.remove("streaming");
     if (!fullText) {
       bubble.remove();
