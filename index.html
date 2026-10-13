@@ -16,6 +16,12 @@
     <main class="main">
       <header class="chat-header">
         <h1 id="app-name">My AI</h1>
+        <div class="avatar-picker">
+          <button id="avatar-btn" class="avatar-btn" title="Choose avatar">
+            <img id="avatar-current" src="" alt="Kitsune avatar">
+          </button>
+          <div id="avatar-menu" class="avatar-menu hidden"></div>
+        </div>
       </header>
       <div id="messages" class="messages"></div>
       <div id="error-bar" class="error-bar hidden"></div>
@@ -25,6 +31,7 @@
       </form>
     </main>
   </div>
+  <script src="/static/avatars.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

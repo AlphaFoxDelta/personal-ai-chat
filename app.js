@@ -53,6 +53,56 @@ const rawTextByEl = new WeakMap();
 const REACT_EMOJIS = ["\uD83D\uDC4D", "\u2764\uFE0F", "\uD83D\uDE02",
                       "\uD83D\uDE2E", "\uD83D\uDE22", "\uD83C\uDF89"];
 
+// Avatar picker: 4 fox avatars, choice stored in localStorage.
+const AVATARS = [
+  { id: "fox-ember", name: "Ember" },
+  { id: "fox-shadow", name: "Shadow" },
+  { id: "fox-neon", name: "Neon" },
+  { id: "fox-ink", name: "Ink" },
+];
+const AVATAR_KEY = "kitsune_avatar";
+
+function getAvatarId() {
+  const id = localStorage.getItem(AVATAR_KEY);
+  return AVATARS.some(function (a) { return a.id === id; }) ? id : "fox-ember";
+}
+
+function avatarUrl(id) {
+  return AVATAR_DATA[id] || AVATAR_DATA["fox-ember"];
+}
+
+function applyAvatar(id) {
+  document.getElementById("avatar-current").src = avatarUrl(id);
+  document.querySelectorAll(".msg-avatar").forEach(function (img) {
+    img.src = avatarUrl(id);
+  });
+  document.querySelectorAll(".avatar-option").forEach(function (btn) {
+    btn.classList.toggle("selected", btn.dataset.avatar === id);
+  });
+}
+
+function setAvatar(id) {
+  localStorage.setItem(AVATAR_KEY, id);
+  applyAvatar(id);
+}
+
+function buildAvatarMenu() {
+  const menu = document.getElementById("avatar-menu");
+  menu.innerHTML = "";
+  AVATARS.forEach(function (a) {
+    const btn = document.createElement("button");
+    btn.className = "avatar-option";
+    btn.dataset.avatar = a.id;
+    btn.innerHTML = '<img src="' + avatarUrl(a.id) + '" alt="' + a.name + '">' +
+      "<span>" + a.name + "</span>";
+    btn.addEventListener("click", function () {
+      setAvatar(a.id);
+      menu.classList.add("hidden");
+    });
+    menu.appendChild(btn);
+  });
+}
+
 function setReactionBadge(div, emoji) {
   let badge = div.querySelector(":scope > .reaction-badge");
   if (!emoji) {
@@ -76,6 +126,9 @@ function addMessage(role, text, streaming, opts) {
     return '<button class="emoji-option" data-emoji="' + e + '">' + e + "</button>";
   }).join("");
   div.innerHTML =
+    (role === "assistant"
+      ? '<img class="msg-avatar" src="' + avatarUrl(getAvatarId()) + '" alt="">'
+      : "") +
     '<div class="message-content">' + renderRich(text) + "</div>" +
     '<div class="message-actions">' +
     '<button class="action-btn" data-action="react" title="React">\uD83D\uDE0A</button>' +
@@ -423,6 +476,17 @@ newChatBtn.addEventListener("click", () => {
 
 (async function init() {
   await loadBranding();
+  buildAvatarMenu();
+  applyAvatar(getAvatarId());
+  document.getElementById("avatar-btn").addEventListener("click", function (e) {
+    e.stopPropagation();
+    document.getElementById("avatar-menu").classList.toggle("hidden");
+  });
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest(".avatar-picker")) {
+      document.getElementById("avatar-menu").classList.add("hidden");
+    }
+  });
   const conversations = await api("/api/conversations");
   if (conversations.length === 0) {
     await createConversation();

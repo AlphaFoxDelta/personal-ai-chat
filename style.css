@@ -113,12 +113,112 @@ body {
   padding: 14px 24px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .chat-header h1 {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
+}
+
+/* Avatar picker in the header. */
+.avatar-picker {
+  position: relative;
+}
+
+.avatar-btn {
+  background: none;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+  padding: 0;
+  width: 38px;
+  height: 38px;
+  overflow: hidden;
+}
+
+.avatar-btn:hover {
+  border-color: var(--accent);
+}
+
+.avatar-btn img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.avatar-menu {
+  position: absolute;
+  right: 0;
+  top: 46px;
+  z-index: 20;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+
+.avatar-menu.hidden {
+  display: none;
+}
+
+.avatar-option {
+  background: none;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.avatar-option img {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+.avatar-option span {
+  font-size: 11px;
+  color: var(--muted);
+  display: block;
+  margin-top: 4px;
+}
+
+.avatar-option:hover {
+  border-color: var(--border);
+}
+
+.avatar-option.selected {
+  border-color: var(--accent);
+}
+
+.avatar-option.selected span {
+  color: var(--text);
+}
+
+/* Avatar shown beside assistant messages. */
+.message.assistant {
+  margin-left: 46px;
+}
+
+.msg-avatar {
+  position: absolute;
+  left: -46px;
+  top: 2px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--border);
 }
 
 .messages {
