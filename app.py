@@ -284,8 +284,40 @@ def web():
         ).fetchall()
         is_first = len(history_rows) == 0
 
+    today = datetime.now().strftime("%A, %B %d, %Y")
+
     try:
-        results = web_search(query)
+        backend = build_backend(CONFIG)
+    except BackendError as exc:
+        if conn:
+            conn.close()
+        return jsonify({"error": str(exc)}), 500
+
+    # Rewrite the question into a sharp search query first. A conversational
+    # question makes a bad search query, so resolve relative dates and strip
+    # the chit-chat before hitting DuckDuckGo.
+    search_query = query
+    try:
+        rewrite_messages = [
+            {"role": "system",
+             "content": "You rewrite questions as short web search queries."},
+            {"role": "user",
+             "content": (
+                 "Today is %s. Rewrite the following question as a short web "
+                 "search query (under 12 words). Resolve relative dates like "
+                 "'next week' or 'tonight' into actual dates. "
+                 "Output only the query, nothing else.\n\nQuestion: %s"
+                 % (today, query)
+             )},
+        ]
+        rewritten = "".join(backend.stream(rewrite_messages)).strip().strip('"')
+        if rewritten:
+            search_query = rewritten
+    except Exception:
+        pass
+
+    try:
+        results = web_search(search_query)
     except WebError as exc:
         if conn:
             conn.close()
@@ -305,7 +337,6 @@ def web():
             )
     context = "\n\n".join(context_parts)
 
-    today = datetime.now().strftime("%A, %B %d, %Y")
     messages = [
         {"role": "system", "content": CONFIG["system_prompt"]},
         {
@@ -322,13 +353,6 @@ def web():
             ),
         },
     ]
-
-    try:
-        backend = build_backend(CONFIG)
-    except BackendError as exc:
-        if conn:
-            conn.close()
-        return jsonify({"error": str(exc)}), 500
 
     def generate():
         parts = []
