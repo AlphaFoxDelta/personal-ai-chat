@@ -87,7 +87,7 @@ Everything lives in `config.yaml` (copy it from `config.example.yaml`). The real
 
 The app reads settings from environment variables, so it runs on free hosts without changing code. The usual free setup:
 
-1. Put it on Render's free tier: connect this repo, start command `python app.py`.
+1. Put it on Render's free tier: New -> Web Service, connect this repo. The included `render.yaml` blueprint pre-fills the build/start commands; you only paste in the model name and API key.
 2. Point it at a free model API instead of local Ollama. OpenRouter has free models: set `BACKEND` to `openai_compatible`, `OPENAI_COMPATIBLE_BASE_URL` to `https://openrouter.ai/api/v1`, `OPENAI_COMPATIBLE_MODEL` to a `:free` model, and `OPENAI_COMPATIBLE_API_KEY` to your free key.
 
 Supported env vars: `HOST`, `PORT`, `APP_NAME`, `ACCENT_COLOR`, `SYSTEM_PROMPT`, `BACKEND`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_API_KEY`, `OPENAI_COMPATIBLE_MODEL`, `AUTO_ROUTE`.
