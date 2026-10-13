@@ -1,0 +1,33 @@
+# Copy this file to config.yaml and fill in your own values.
+# config.yaml is gitignored. Never commit real API keys.
+
+# Name shown in the header and browser tab.
+app_name: "My AI"
+
+# Accent color for buttons and highlights (any CSS color).
+accent_color: "#4f46e5"
+
+# Persona for the assistant. Change this to brand the behavior.
+system_prompt: "You are a helpful assistant."
+
+# Which backend to use: "ollama" (free, local) or "openai_compatible" (paid API).
+backend: "ollama"
+
+ollama:
+  # Where your local Ollama server listens.
+  base_url: "http://localhost:11434"
+  # Model name, must be pulled first: ollama pull llama3.1
+  model: "llama3.1"
+
+openai_compatible:
+  # Works with OpenAI and any OpenAI-compatible endpoint.
+  base_url: "https://api.openai.com/v1"
+  # Put your key in config.yaml only, never commit it.
+  api_key: ""
+  model: "gpt-4o-mini"
+
+# SQLite file for conversation history (relative to the project folder).
+database: "chat.db"
+
+# Port the web UI listens on.
+port: 5000

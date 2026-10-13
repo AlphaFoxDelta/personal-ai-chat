@@ -1,0 +1,15 @@
+# Real config with your settings and any API keys. Never commit this.
+config.yaml
+
+# Chat history database
+*.db
+*.sqlite
+*.sqlite3
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+env/
