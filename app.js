@@ -67,8 +67,21 @@ function getAvatarId() {
   return AVATARS.some(function (a) { return a.id === id; }) ? id : "fox-ember";
 }
 
+let avatarWorking = false;
+
 function avatarUrl(id) {
-  return AVATAR_DATA[id] || AVATAR_DATA["fox-ember"];
+  const key = avatarWorking ? id + "-working" : id;
+  return AVATAR_DATA[key] || AVATAR_DATA[id] || AVATAR_DATA["fox-ember"];
+}
+
+// Central busy-state switch: flips isStreaming and swaps every visible
+// avatar to its working variant (and back when done).
+function setBusy(busy) {
+  isStreaming = busy;
+  if (avatarWorking !== busy) {
+    avatarWorking = busy;
+    applyAvatar(getAvatarId());
+  }
 }
 
 function avatarName(id) {
@@ -79,7 +92,6 @@ function avatarName(id) {
 function applyAvatar(id) {
   const url = avatarUrl(id);
   document.getElementById("profile-avatar").src = url;
-  document.getElementById("panel-toggle-avatar").src = url;
   document.getElementById("avatar-current-name").textContent = avatarName(id);
   document.querySelectorAll(".msg-avatar").forEach(function (img) {
     img.src = url;
@@ -351,7 +363,7 @@ async function sendMessage(text) {
   clearError();
   const userBubble = addMessage("user", text, false);
   const bubble = addMessage("assistant", "", true);
-  isStreaming = true;
+  setBusy(true);
   sendBtn.disabled = true;
 
   try {
@@ -381,7 +393,7 @@ async function sendMessage(text) {
     bubble.remove();
     showError(e.message);
   } finally {
-    isStreaming = false;
+    setBusy(false);
     sendBtn.disabled = false;
     chatInput.focus();
   }
@@ -391,7 +403,7 @@ async function runSubagents(task) {
   clearError();
   const userBubble = addMessage("user", "/team " + task, false);
   const bubble = addMessage("assistant", "Consulting the team...", true);
-  isStreaming = true;
+  setBusy(true);
   sendBtn.disabled = true;
 
   try {
@@ -420,7 +432,7 @@ async function runSubagents(task) {
     bubble.remove();
     showError(e.message);
   } finally {
-    isStreaming = false;
+    setBusy(false);
     sendBtn.disabled = false;
     chatInput.focus();
   }
@@ -430,7 +442,7 @@ async function runWebSearch(query) {
   clearError();
   const userBubble = addMessage("user", "/web " + query, false);
   const bubble = addMessage("assistant", "Searching the web...", true);
-  isStreaming = true;
+  setBusy(true);
   sendBtn.disabled = true;
 
   try {
@@ -459,7 +471,7 @@ async function runWebSearch(query) {
     bubble.remove();
     showError(e.message);
   } finally {
-    isStreaming = false;
+    setBusy(false);
     sendBtn.disabled = false;
     chatInput.focus();
   }

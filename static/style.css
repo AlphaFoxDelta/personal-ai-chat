@@ -124,28 +124,25 @@ body {
   font-weight: 600;
 }
 
-/* Small avatar button in the header toggles the profile panel. */
+/* Plain icon button in the header toggles the profile panel. */
 .panel-toggle {
   background: none;
-  border: 2px solid var(--border);
-  border-radius: 50%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
   cursor: pointer;
   padding: 0;
-  width: 38px;
-  height: 38px;
-  overflow: hidden;
+  width: 34px;
+  height: 34px;
   flex-shrink: 0;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .panel-toggle:hover {
   border-color: var(--accent);
-}
-
-.panel-toggle img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
+  color: var(--text);
 }
 
 /* Right-side profile panel. */
@@ -173,6 +170,17 @@ body {
   border: 3px solid var(--border);
   display: block;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  animation: avatar-idle 5s ease-in-out infinite;
+}
+
+/* Gentle idle float, like a breathing presence when sitting there. */
+@keyframes avatar-idle {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
 }
 
 .profile-panel h2 {
