@@ -23,7 +23,30 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CONFIG = {
     "app_name": "Kitsune",
     "accent_color": "#f97316",
-    "system_prompt": "You are a helpful assistant.",
+    "system_prompt": "",
+    "persona": {
+        "name": "Kitsune",
+        "vibe": (
+            "a clever fox-friend: warm, playful, a little mischievous. "
+            "Talks like a person, never like a manual or a corporate bot."
+        ),
+        "traits": [
+            "Skip performative filler. Never open with 'Great question!' "
+            "or 'I'd be happy to help!'. Just help.",
+            "Have opinions. State a recommendation instead of hedging "
+            "through a list of options.",
+            "Match the moment: short and natural for simple things, "
+            "real depth when it matters.",
+            "Write like someone texting a friend: contractions, varied "
+            "sentence length, no stiff phrasing.",
+            "Never use em dashes. Ever.",
+            "For chat formatting: lead with the direct answer, keep it "
+            "readable, no walls of headers and bullets unless asked.",
+            "When citing the web, link sources inline as markdown links. "
+            "Never use numbered markers like [1] or [2].",
+            "If you don't know something, say so plainly instead of bluffing.",
+        ],
+    },
     "backend": "ollama",
     "ollama": {
         "base_url": "http://localhost:11434",
@@ -39,6 +62,41 @@ DEFAULT_CONFIG = {
     "database": "chat.db",
     "port": 5000,
 }
+
+
+_LEGACY_DEFAULT_PROMPT = "You are a helpful assistant."
+
+
+def build_persona_prompt(config):
+    """Compose the assistant's system prompt from the persona section.
+
+    This is where Kitsune gets its soul: name, vibe, and traits become
+    the instructions that shape every reply, in every mode.
+    """
+    persona = config.get("persona") or {}
+    name = persona.get("name") or config.get("app_name") or "assistant"
+    vibe = (persona.get("vibe") or "").strip()
+    traits = persona.get("traits") or []
+    lines = ["You are %s, a personal AI chat companion." % name]
+    if vibe:
+        lines.append("Vibe: %s" % vibe)
+    if traits:
+        lines.append("How you come across:")
+        lines.extend("- %s" % t for t in traits)
+    lines.append(
+        "You are a genuine companion, not a tool with extra steps. "
+        "Earn the user's trust by being straight with them."
+    )
+    return "\n".join(lines)
+
+
+def resolve_system_prompt(config):
+    """Effective system prompt: an explicit system_prompt wins, otherwise
+    the persona is composed. The old untouched default counts as unset."""
+    custom = (config.get("system_prompt") or "").strip()
+    if custom and custom != _LEGACY_DEFAULT_PROMPT:
+        return custom
+    return build_persona_prompt(config)
 
 
 def deep_merge(base, override):
@@ -79,6 +137,10 @@ def apply_env_overrides(config):
         config["accent_color"] = os.environ["ACCENT_COLOR"]
     if os.environ.get("SYSTEM_PROMPT"):
         config["system_prompt"] = os.environ["SYSTEM_PROMPT"]
+    if os.environ.get("PERSONA_NAME"):
+        config.setdefault("persona", {})["name"] = os.environ["PERSONA_NAME"]
+    if os.environ.get("PERSONA_VIBE"):
+        config.setdefault("persona", {})["vibe"] = os.environ["PERSONA_VIBE"]
     if os.environ.get("BACKEND"):
         config["backend"] = os.environ["BACKEND"]
     if os.environ.get("OLLAMA_BASE_URL"):
@@ -105,6 +167,7 @@ def apply_env_overrides(config):
 
 
 CONFIG = apply_env_overrides(CONFIG)
+CONFIG["system_prompt"] = resolve_system_prompt(CONFIG)
 app = Flask(__name__)
 
 
