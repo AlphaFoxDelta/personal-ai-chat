@@ -71,6 +71,11 @@ google_search:
   api_key: ""
   cx: ""
 
+# Tavily search for /web (optional, recommended for hosted servers).
+# 1,000 free searches/month, no credit card. Get a key at app.tavily.com.
+# When set, Tavily is tried before Google and DuckDuckGo.
+tavily_api_key: ""
+
 # SQLite file for conversation history (relative to the project folder).
 database: "chat.db"
 

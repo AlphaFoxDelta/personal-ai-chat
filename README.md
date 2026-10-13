@@ -25,7 +25,7 @@ If Ollama is not running when you send a message, the app tells you plainly in t
 - Branding and persona set in one config file: app name, accent color, and the system prompt that defines how the assistant behaves.
 - Swappable backend: Ollama for free local use, or any OpenAI-compatible API if you add a key later.
 - Subagents: type `/team <task>` in the chat box and a team of background workers tackles it in parallel, then merges their answers into one reply. Still free, still local.
-- Web search: type `/web <question>` and Kitsune searches the web and answers using the results. Sources come back as clickable links, and follow-up questions keep the thread. DuckDuckGo by default (free, no key); set `GOOGLE_API_KEY` and `GOOGLE_CX` for Google Custom Search (free 100/day, more reliable when hosted).
+- Web search: type `/web <question>` and Kitsune searches the web and answers using the results. Sources come back as clickable links, and follow-up questions keep the thread. DuckDuckGo by default (free, no key). For hosted servers, set `TAVILY_API_KEY` (1,000 free searches/month, no card, from app.tavily.com) and it is tried first; `GOOGLE_API_KEY` + `GOOGLE_CX` is tried next when set.
 - Smart routing: just ask. The app figures out whether your message needs a web search, the subagent team, or a normal reply. No commands needed. Web answers come back with clickable source links.
 
 ## Subagents

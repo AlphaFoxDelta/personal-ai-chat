@@ -125,26 +125,101 @@ def google_search(query, max_results=5):
     return results
 
 
-def _search_provider():
-    """Use Google when its credentials are set, else DuckDuckGo."""
-    if os.environ.get("GOOGLE_API_KEY", "").strip() and os.environ.get(
-        "GOOGLE_CX", ""
-    ).strip():
-        return "google"
-    return "duckduckgo"
+def tavily_search(query, max_results=5):
+    """Search via the Tavily API (built for AI apps).
+
+    Needs TAVILY_API_KEY in the environment. Free tier is 1,000
+    searches/month with no credit card. Works from any network.
+    """
+    api_key = os.environ.get("TAVILY_API_KEY", "").strip()
+    if not api_key:
+        raise WebError("Tavily search is not configured.")
+    try:
+        resp = _http.post(
+            "https://api.tavily.com/search",
+            headers={
+                "Authorization": "Bearer " + api_key,
+                "Content-Type": "application/json",
+            },
+            json={
+                "query": query,
+                "max_results": max(1, min(int(max_results), 10)),
+                "search_depth": "basic",
+                "include_answer": False,
+            },
+            timeout=20,
+        )
+    except Exception as exc:
+        raise WebError("Tavily search failed: %s" % exc)
+    if resp.status_code == 401:
+        raise WebError(
+            "Tavily rejected the API key (HTTP 401). Check the key."
+        )
+    if resp.status_code != 200:
+        raise WebError(
+            "Tavily search returned HTTP %s." % resp.status_code
+        )
+    try:
+        data = resp.json()
+    except Exception:
+        raise WebError("Tavily search returned unreadable data.")
+    results = []
+    for item in (data.get("results") or [])[:max_results]:
+        snippet = item.get("content", "") or ""
+        results.append(
+            {
+                "title": item.get("title", ""),
+                "url": item.get("url", ""),
+                "snippet": snippet[:500],
+            }
+        )
+    if not results:
+        raise WebError("No search results found.")
+    return results
+
+
+def _tavily_configured():
+    return bool(os.environ.get("TAVILY_API_KEY", "").strip())
+
+
+def _google_configured():
+    return bool(
+        os.environ.get("GOOGLE_API_KEY", "").strip()
+        and os.environ.get("GOOGLE_CX", "").strip()
+    )
+
+
+def _provider_chain():
+    """Backends to try in order. Tavily first (reliable API), then Google
+    (for whoever has a working whole-web engine), then DuckDuckGo."""
+    chain = []
+    if _tavily_configured():
+        chain.append(("tavily", tavily_search))
+    if _google_configured():
+        chain.append(("google", google_search))
+    chain.append(("duckduckgo", _ddg_search))
+    return chain
 
 
 def web_search(query, max_results=5):
     """Search the web and return a list of {title, url, snippet} dicts.
 
-    Uses Google Custom Search when GOOGLE_API_KEY/GOOGLE_CX are set,
-    otherwise DuckDuckGo (free, no key)."""
+    Tries each configured backend in order (Tavily, Google, DuckDuckGo)
+    and uses the first one that returns results."""
     query = (query or "").strip()
     if not query:
         raise WebError("A search query is required.")
-    if _search_provider() == "google":
-        return google_search(query, max_results)
+    errors = []
+    for name, search_fn in _provider_chain():
+        try:
+            return search_fn(query, max_results)
+        except WebError as exc:
+            errors.append("%s: %s" % (name, exc))
+    raise WebError("Web search failed (%s)." % "; ".join(errors))
 
+
+def _ddg_search(query, max_results=5):
+    """Search DuckDuckGo and return a list of {title, url, snippet} dicts."""
     html = _fetch_results(query)
 
     if html is None:

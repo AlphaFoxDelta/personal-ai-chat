@@ -87,6 +87,7 @@ DEFAULT_CONFIG = {
         "api_key": "",
         "cx": "",
     },
+    "tavily_api_key": "",
     "database": "chat.db",
     "port": 5000,
 }
@@ -207,6 +208,8 @@ def apply_config_secrets_to_env(config):
         os.environ["GOOGLE_API_KEY"] = str(google["api_key"])
     if google.get("cx") and not os.environ.get("GOOGLE_CX"):
         os.environ["GOOGLE_CX"] = str(google["cx"])
+    if config.get("tavily_api_key") and not os.environ.get("TAVILY_API_KEY"):
+        os.environ["TAVILY_API_KEY"] = str(config["tavily_api_key"])
     return config
 
 
