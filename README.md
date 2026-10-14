@@ -27,6 +27,9 @@ If Ollama isn't running when you send a message, the app tells you straight up i
 - Avatars: four fox avatars to pick from. The avatar swaps to a focused version while a reply is generating, then swaps back when it's done.
 - Profile panel: big avatar, online status, and an activity feed showing your recent chats, searches, and team runs.
 - Message actions: hover any message to react, quote-reply, or copy it.
+- Attachments: hit the paperclip to add text files or photos to a message. Text files get read in as context; photos go to the model if it can see them.
+- Voice input: hit the mic and talk. Your words land in the chat box.
+- Input history: up and down arrows cycle through what you've typed, like a terminal.
 - `/team <task>`: a crew of background workers tackles the task in parallel, then merges their answers into one reply. Every worker gets live web results as background first. Still free, still local.
 - `/web <question>`: searches the web and answers from the results, with clickable source links. Follow-ups keep the thread. DuckDuckGo by default (free, no key). On a hosted server, set `TAVILY_API_KEY` and that's tried first, then Google if you set those keys.
 - Smart routing: just type. The app figures out whether you need a web search, the team, or a normal reply. Short messages skip the check. Turn it off with `auto_route: false` if you'd rather drive.
